@@ -1,6 +1,6 @@
 [package]
-name = "sluggrs"
-version = "0.2.0"
+name = "sluggrs_skylines"
+version = "0.3.0"
 edition = "2024"
 rust-version = "1.98"
 license = "MIT OR Apache-2.0 OR Zlib"

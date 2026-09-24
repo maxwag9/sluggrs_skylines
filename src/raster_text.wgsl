@@ -1,5 +1,5 @@
 // Textured quad shader for raster glyph fallback (emoji, bitmap fonts).
-// Shares the Params uniform layout with sluggrs (group 0).
+// Shares the Params uniform layout with sluggrs_skylines (group 0).
 
 struct Params {
     screen_size: vec2<f32>,

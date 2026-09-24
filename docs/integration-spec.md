@@ -1,8 +1,8 @@
-# sluggrs Integration Spec: Replacing cryoglyph in iced
+# sluggrs_skylines Integration Spec: Replacing cryoglyph in iced
 
 ## Overview
 
-Replace cryoglyph (bitmap atlas text renderer) with sluggrs (GPU curve
+Replace cryoglyph (bitmap atlas text renderer) with sluggrs_skylines (GPU curve
 evaluation) in iced's wgpu backend. The integration point is a single file:
 `iced/wgpu/src/text.rs` (~650 lines).
 
@@ -62,7 +62,7 @@ pub struct GlyphKey {
 ```
 
 **Note on FAKE_ITALIC**: If `cache_key_flags` includes FAKE_ITALIC,
-sluggrs must apply the same shear transform that SwashCache applies.
+sluggrs_skylines must apply the same shear transform that SwashCache applies.
 This may need to happen during outline extraction or as a post-process
 on the extracted curves. The spike should determine whether skrifa
 handles this or if we need to apply it ourselves.
@@ -94,7 +94,7 @@ prepare and route them to a bitmap fallback path.
 
 Options for the bitmap path:
 
-1. **Embedded cryoglyph**: sluggrs depends on cryoglyph as a library
+1. **Embedded cryoglyph**: sluggrs_skylines depends on cryoglyph as a library
    and delegates non-vector glyphs to it. Heavy dependency but zero
    new bitmap code. Two draw calls per text batch.
 
@@ -103,8 +103,8 @@ Options for the bitmap path:
    only. Lighter dependency, more code.
 
 3. **Upstream cryoglyph in iced**: Keep cryoglyph in iced's workspace
-   alongside sluggrs, use it as the fallback at the `text.rs` level.
-   Avoids making sluggrs depend on cryoglyph.
+   alongside sluggrs_skylines, use it as the fallback at the `text.rs` level.
+   Avoids making sluggrs_skylines depend on cryoglyph.
 
 Recommendation: Option 3 for initial integration (least coupling),
 migrate to Option 2 when the integration is stable.
@@ -116,9 +116,9 @@ the iced dependency swap ships.
 
 ## API Surface
 
-sluggrs must export the same public types that `text.rs` imports from
+sluggrs_skylines must export the same public types that `text.rs` imports from
 cryoglyph. The types are listed here with their cryoglyph behavior and
-the sluggrs equivalent.
+the sluggrs_skylines equivalent.
 
 ### Types (identical interface)
 
@@ -140,7 +140,7 @@ These types are simple and can match cryoglyph exactly:
 Cryoglyph: Holds shader module, sampler, bind group layouts, pipeline
 layout, cached render pipelines. Shared across all atlases.
 
-sluggrs: Same role - holds our Slug shader module, bind group layouts for
+sluggrs_skylines: Same role - holds our Slug shader module, bind group layouts for
 curve/band textures and params uniform, pipeline layout, cached pipelines.
 No sampler needed (we use `textureLoad`, not `textureSample`).
 
@@ -163,7 +163,7 @@ impl Cache {
 Cryoglyph: Params buffer with screen resolution, bind group for the
 uniform.
 
-sluggrs: Identical structure and behavior. The shader uniform layout
+sluggrs_skylines: Identical structure and behavior. The shader uniform layout
 matches (screen_size vec2 + padding).
 
 ```rust
@@ -183,7 +183,7 @@ impl Viewport {
 Cryoglyph: Two bitmap atlas textures (color + mask), etagere packer, LRU
 glyph cache keyed by `cosmic_text::CacheKey` (physical glyph position).
 
-sluggrs: Two data textures (curve Rgba32Float + band Rgba32Uint), a glyph
+sluggrs_skylines: Two data textures (curve Rgba32Float + band Rgba32Uint), a glyph
 outline cache keyed by `GlyphKey` (resolution-independent), and a bind
 group referencing both textures.
 
@@ -258,13 +258,13 @@ remains valid. The bind group is set per-draw in `render()`.
 
 ##### trim() semantics
 
-**Design decision**: sluggrs's `trim()` retains cached glyph data.
+**Design decision**: sluggrs_skylines's `trim()` retains cached glyph data.
 
 cryoglyph's `trim()` clears the per-frame "glyphs in use" sets but
 retains all atlas contents and the LRU cache. This is important because
 iced calls `trim()` every frame (`text.rs:424`).
 
-sluggrs must NOT clear the glyph cache on trim. Instead:
+sluggrs_skylines must NOT clear the glyph cache on trim. Instead:
 
 - Track which glyphs were referenced this frame (glyphs_in_use set)
 - On trim, clear glyphs_in_use but retain glyph_cache and texture data
@@ -299,7 +299,7 @@ impl TextAtlas {
 Cryoglyph: Collects `GlyphToRender` instances (pos, atlas UV, color, depth),
 uploads vertex buffer, draws instanced triangle strips.
 
-sluggrs: Collects 48-byte `GlyphInstance` instances (screen_rect, color,
+sluggrs_skylines: Collects 48-byte `GlyphInstance` instances (screen_rect, color,
 glyph_offset, cmd_texel_count, depth, ppem), uploads vertex buffer, draws instanced
 triangle strips. The vertex format is different but the flow is the same.
 
@@ -353,7 +353,7 @@ cryoglyph re-exports most of `cosmic_text` for convenience. `text.rs` uses:
 - `cosmic_text::Color` (via `cryoglyph::Color`)
 - `cosmic_text::FontSystem` (via `cryoglyph::FontSystem`)
 
-sluggrs must re-export these identically:
+sluggrs_skylines must re-export these identically:
 
 ```rust
 pub use cosmic_text::{
@@ -433,14 +433,14 @@ while GLES-style adapters without vertex storage are unsupported.
 
 ```diff
 -cryoglyph = { git = "https://github.com/iced-rs/cryoglyph.git", rev = "1d68895..." }
-+sluggrs = { path = "../../../sluggrs" }  # or git dep
++sluggrs_skylines = { path = "../../../sluggrs_skylines" }  # or git dep
 ```
 
 ### `iced/wgpu/Cargo.toml`
 
 ```diff
 -cryoglyph.workspace = true
-+sluggrs.workspace = true
++sluggrs_skylines.workspace = true
 ```
 
 ### `iced/wgpu/src/text.rs`
@@ -450,9 +450,9 @@ the semantic differences require targeted changes in `text.rs`.
 
 #### Behavioral differences from cryoglyph
 
-| Behavior | cryoglyph | sluggrs | text.rs impact |
+| Behavior | cryoglyph | sluggrs_skylines | text.rs impact |
 |----------|-----------|---------|----------------|
-| **Namespace** | `cryoglyph::*` | `sluggrs::*` | Mechanical rename |
+| **Namespace** | `cryoglyph::*` | `sluggrs_skylines::*` | Mechanical rename |
 | **SwashCache** | Rasterizes glyphs | Accepted, unused | No change needed; wasted alloc is negligible |
 | **ColorMode** | Controls sRGB texture format | Accepted, ignored | No change; may need revisiting for color correctness |
 | **trim()** | Clears usage sets, retains atlas | Clears usage sets, retains cache | Compatible - same external behavior |
@@ -463,32 +463,32 @@ the semantic differences require targeted changes in `text.rs`.
 
 #### Preserved text.rs assumptions
 
-These iced behaviors are maintained by sluggrs:
+These iced behaviors are maintained by sluggrs_skylines:
 
 1. **Group versioning** (`text.rs:163`, `text.rs:247`): Atlas trim
-   increments group version, forcing re-prepare of uploads. sluggrs
+   increments group version, forcing re-prepare of uploads. sluggrs_skylines
    preserves this because trim changes texture contents (even if it
    only clears the usage set, regrown textures after eviction would
    invalidate old offsets).
 
 2. **Scissor rect per batch** (`text.rs:397`): Always set before any
-   render call. sluggrs relies on this for clipping.
+   render call. sluggrs_skylines relies on this for clipping.
 
 3. **AtlasFull swallowed** (`text.rs:358`): The pipeline gracefully
-   degrades by skipping the batch. Same behavior with sluggrs since
+   degrades by skipping the batch. Same behavior with sluggrs_skylines since
    our textures are harder to fill.
 
 4. **Multiple TextRenderer instances** (`text.rs:301`, `text.rs:332`):
    State maintains a Vec of renderers, one per prepare layer. Each
-   renderer has its own vertex buffer. Compatible with sluggrs.
+   renderer has its own vertex buffer. Compatible with sluggrs_skylines.
 
 ## Clip Bounds
 
-**Design decision**: sluggrs relies on the scissor rect for clipping,
+**Design decision**: sluggrs_skylines relies on the scissor rect for clipping,
 not per-glyph clip testing.
 
 cryoglyph clips individual glyph quads against `TextBounds` and adjusts
-atlas UVs to crop partially visible glyphs. sluggrs renders full glyph
+atlas UVs to crop partially visible glyphs. sluggrs_skylines renders full glyph
 quads and depends on the scissor rect that `text.rs:397` sets via
 `render_pass.set_scissor_rect(...)`.
 
@@ -523,7 +523,7 @@ Resolve Blockers 1 and 2 with working code:
 
 ### Phase A: API skeleton
 
-Create the sluggrs API types with the correct signatures. Implement
+Create the sluggrs_skylines API types with the correct signatures. Implement
 trivial stubs (prepare does nothing, render draws nothing). Swap the
 dependency in iced and verify it compiles and runs (with no visible text).
 

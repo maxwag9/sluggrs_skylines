@@ -8,7 +8,7 @@
 //! Run: cargo run --release --example gpu-bench
 
 use cosmic_text::{Attrs, Buffer, Color, FontSystem, Metrics, Shaping};
-use sluggrs::{
+use sluggrs_skylines::{
     Cache, ColorMode, Resolution, SwashCache, TextArea, TextAtlas, TextBounds, TextRenderer,
     Viewport,
 };
@@ -86,7 +86,7 @@ fn main() {
         mapped_at_creation: false,
     });
 
-    // Set up sluggrs pipeline
+    // Set up sluggrs_skylines pipeline
     let cache = Cache::new(&device);
     let mut atlas =
         TextAtlas::with_color_mode(&device, &queue, &cache, format, ColorMode::Accurate);

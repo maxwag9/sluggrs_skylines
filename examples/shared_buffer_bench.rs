@@ -3,7 +3,7 @@
 use std::time::Instant;
 
 use cosmic_text::{Attrs, Buffer, FontSystem, Metrics, Shaping};
-use sluggrs::{
+use sluggrs_skylines::{
     Cache, Color, ColorMode, Resolution, SwashCache, TextArea, TextAtlas, TextBounds, TextRenderer,
     Viewport,
 };
@@ -20,7 +20,7 @@ const WARM_FRAMES: u32 = 50;
 static ALLOC: hotpath::CountingAllocator = hotpath::CountingAllocator::new();
 
 fn main() {
-    let _guard = hotpath::HotpathGuardBuilder::new("sluggrs::shared_buffer_bench")
+    let _guard = hotpath::HotpathGuardBuilder::new("sluggrs_skylines::shared_buffer_bench")
         .percentiles(&[50.0, 95.0, 99.0])
         .functions_limit(0)
         .build();
@@ -140,6 +140,7 @@ fn prepare(
         .prepare(
             device,
             queue,
+            &mut encoder,
             font_system,
             atlas,
             viewport,

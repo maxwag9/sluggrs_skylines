@@ -3,12 +3,12 @@
 use std::time::Instant;
 
 use cosmic_text::{Attrs, Buffer, Color, Family, FontSystem, Metrics, Shaping, SwashCache};
-use sluggrs::{
+use sluggrs_skylines::{
     Cache, ColorMode, Resolution, TextArea, TextAtlas, TextBounds, TextRenderer, Viewport,
 };
 
 fn main() {
-    let _guard = hotpath::HotpathGuardBuilder::new("sluggrs::atlas_repopulate")
+    let _guard = hotpath::HotpathGuardBuilder::new("sluggrs_skylines::atlas_repopulate")
         .functions_limit(0)
         .build();
     let (device, queue) = device();
@@ -134,12 +134,13 @@ fn prepare(
     font_system: &mut FontSystem,
     swash_cache: &mut SwashCache,
     buffer: &Buffer,
-) -> Result<(), sluggrs::PrepareError> {
+) -> Result<(), sluggrs_skylines::PrepareError> {
     let mut encoder =
         device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
     renderer.prepare(
         device,
         queue,
+        &mut encoder,
         font_system,
         atlas,
         viewport,
@@ -156,8 +157,7 @@ fn prepare(
             },
             default_color: cosmic_text::Color::rgb(255, 255, 255),
             decorations: &[],
-        }],
-        swash_cache,
+        }]
     )
 }
 

@@ -1,6 +1,6 @@
 # TODO
 
-## iced fork (`repos/iced/`, branch `sluggrs` on `folknor/iced`)
+## iced fork (`repos/iced/`, branch `sluggrs_skylines` on `folknor/iced`)
 
 Cleanup opportunities in `wgpu/src/text.rs` - cryoglyph heritage and dual-pipeline leftovers.
 
@@ -10,11 +10,11 @@ Cleanup opportunities in `wgpu/src/text.rs` - cryoglyph heritage and dual-pipeli
 - [ ] **Inline prepare() free function** - thin wrapper that just calls renderer.prepare(). Existed for the old raster.prepare() call. Inline at its two call sites (State::prepare, Storage::prepare).
 - [ ] **Shared shift-or-invalidate** - vector and raster cache-hit paths both do integer-delta adjustments, duplicated. Vector adjusts screen_rect[0..1], raster adjusts physical.x/y. Unify.
 - [ ] **Remove unused `_encoder` and `_cache` params** - thread through 4 functions, never used. Cryoglyph API compat.
-- [ ] **Verify the buffer redraw lifecycle** - sluggrs' retained TextArea
+- [ ] **Verify the buffer redraw lifecycle** - sluggrs_skylines' retained TextArea
   cache requires `buffer.redraw() == false` to hit, but iced's cached
   buffers (`graphics/src/text/cache.rs:45`) are never `set_redraw(false)`
   after shaping, so retained reuse may never engage in production iced.
-  Verify and fix in the fork; the sluggrs-side occurrence-keyed cache
+  Verify and fix in the fork; the sluggrs_skylines-side occurrence-keyed cache
   (shipped) only pays off once this is enabled. **deep review**
 
 
@@ -78,7 +78,7 @@ dominated by compositor/surface, not text math.
 
 ## Architecture
 
-- [ ] **iced wrapper does not expose scroll offset** - sluggrs exposes
+- [ ] **iced wrapper does not expose scroll offset** - sluggrs_skylines exposes
   `Viewport::set_scroll_offset`, but the iced wrapper never calls it, so iced
   rendering always uses `[0,0]`. **wgpu, arch review**
 

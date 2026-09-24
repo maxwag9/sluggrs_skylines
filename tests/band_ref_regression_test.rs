@@ -1,6 +1,6 @@
 //! GPU A/B coverage for curve-reference perpendicular bounds.
 
-use sluggrs::{
+use sluggrs_skylines::{
     SIMPLE_SHADER_WGSL,
     outline::{GlyphOutline, QuadCurve},
     prep::{PrepScratch, prepare_mono},
@@ -37,7 +37,7 @@ fn glyph_data() -> Vec<i32> {
         prepared.band_transform[1].to_bits() as i32,
         prepared.band_transform[2].to_bits() as i32,
         prepared.band_transform[3].to_bits() as i32,
-        sluggrs::prep::pack_i16_pair(
+        sluggrs_skylines::prep::pack_i16_pair(
             (prepared.band_count_x - 1) as i16,
             (prepared.band_count_y - 1) as i16,
         ),

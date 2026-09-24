@@ -13,7 +13,7 @@
 //! physical scaling), B toggles all decorations off for an A/B against the
 //! plain path, E toggles MSAA + stem darkening.
 
-use sluggrs::{
+use sluggrs_skylines::{
     Cache, ColorMode, DecorationMode, Resolution, TextArea, TextAtlas, TextBounds, TextDecoration,
     TextRenderer, Viewport,
 };
@@ -21,6 +21,7 @@ use sluggrs::{
 use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping, SwashCache, Weight};
 
 use std::sync::Arc;
+use wgpu::hal::DynQueue;
 use winit::{
     application::ApplicationHandler, event::WindowEvent, event_loop::EventLoop, window::Window,
 };
@@ -313,13 +314,14 @@ async fn init_render_state(window: Arc<Window>) -> RenderState {
             power_preference: wgpu::PowerPreference::HighPerformance,
             compatible_surface: Some(&surface),
             force_fallback_adapter: false,
+            apply_limit_buckets: false,
         })
         .await
         .expect("failed to find adapter");
 
     let (device, queue) = adapter
         .request_device(&wgpu::DeviceDescriptor {
-            label: Some("sluggrs borders device"),
+            label: Some("sluggrs_skylines borders device"),
             required_features: wgpu::Features::empty(),
             required_limits: wgpu::Limits::default(),
             ..Default::default()
@@ -437,7 +439,7 @@ fn render(state: &mut RenderState) {
     let mut encoder = state
         .device
         .create_command_encoder(&wgpu::CommandEncoderDescriptor {
-            label: Some("sluggrs encoder"),
+            label: Some("sluggrs_skylines encoder"),
         });
 
     state
@@ -450,7 +452,6 @@ fn render(state: &mut RenderState) {
             &mut state.atlas,
             &state.viewport,
             text_areas,
-            &mut state.swash_cache,
         )
         .expect("prepare failed");
 
@@ -484,7 +485,7 @@ fn render(state: &mut RenderState) {
     }
 
     state.queue.submit(std::iter::once(encoder.finish()));
-    frame.present();
+    state.queue.present(frame);
     state.atlas.trim();
 }
 
@@ -498,7 +499,7 @@ impl ApplicationHandler for App {
             event_loop
                 .create_window(
                     Window::default_attributes()
-                        .with_title("sluggrs borders")
+                        .with_title("sluggrs_skylines borders")
                         .with_inner_size(winit::dpi::LogicalSize::new(1200, 900)),
                 )
                 .expect("failed to create window"),

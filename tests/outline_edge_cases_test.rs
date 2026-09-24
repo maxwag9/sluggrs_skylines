@@ -3,9 +3,9 @@
 //!
 //! Run with: cargo test --test outline_edge_cases_test -- --nocapture
 
-use sluggrs::band::{CurveLocation, build_bands};
-use sluggrs::outline::{char_to_glyph_id, extract_outline};
-use sluggrs::prepare::apply_italic_shear;
+use sluggrs_skylines::band::{CurveLocation, build_bands};
+use sluggrs_skylines::outline::{char_to_glyph_id, extract_outline};
+use sluggrs_skylines::prepare::apply_italic_shear;
 
 /// Path to the bundled Inter Variable font used across these tests.
 const INTER_FONT: &str = "examples/fonts/InterVariable.ttf";
@@ -300,7 +300,7 @@ fn comma_line_only_glyph_regression() {
         1,
         1,
         Vec::new(),
-        &mut sluggrs::band::BandScratch::default(),
+        &mut sluggrs_skylines::band::BandScratch::default(),
     );
 
     // Band data should be non-empty.

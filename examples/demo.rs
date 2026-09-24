@@ -1,6 +1,6 @@
-use sluggrs::band::{self, CurveLocation, build_bands};
-use sluggrs::outline::GlyphOutline;
-use sluggrs::outline::{
+use sluggrs_skylines::band::{self, CurveLocation, build_bands};
+use sluggrs_skylines::outline::GlyphOutline;
+use sluggrs_skylines::outline::{
     CMD_DRAW_GRADIENT, CMD_DRAW_SOLID, ColorGlyphInfo, char_to_glyph_id, encode_colr_v1,
     extract_color_info, extract_outline,
 };
@@ -216,7 +216,7 @@ fn prepare_text(
                 band_count,
                 band_count,
                 Vec::new(),
-                &mut sluggrs::band::BandScratch::default(),
+                &mut sluggrs_skylines::band::BandScratch::default(),
             );
             let [min_x, min_y, max_x, max_y] = outline.bounds;
             let screen_x = cursor_x + min_x * scale;
@@ -466,7 +466,7 @@ impl ApplicationHandler for App {
             event_loop
                 .create_window(
                     Window::default_attributes()
-                        .with_title("sluggrs demo")
+                        .with_title("sluggrs_skylines demo")
                         .with_inner_size(winit::dpi::LogicalSize::new(1200, 900)),
                 )
                 .expect("failed to create window"),
@@ -638,7 +638,7 @@ async fn init_render_state(window: Arc<Window>) -> RenderState {
 
     let (device, queue) = adapter
         .request_device(&wgpu::DeviceDescriptor {
-            label: Some("sluggrs demo device"),
+            label: Some("sluggrs_skylines demo device"),
             required_features: features,
             required_limits: wgpu::Limits::default(),
             ..Default::default()
@@ -1100,7 +1100,7 @@ async fn init_render_state(window: Arc<Window>) -> RenderState {
     // --- Shader ---
     let shader = device.create_shader_module(wgpu::ShaderModuleDescriptor {
         label: Some("slug shader"),
-        source: wgpu::ShaderSource::Wgsl(sluggrs::SIMPLE_SHADER_WGSL.into()),
+        source: wgpu::ShaderSource::Wgsl(sluggrs_skylines::SIMPLE_SHADER_WGSL.into()),
     });
 
     // --- Bind group layouts ---

@@ -88,11 +88,11 @@ pub(crate) struct BlurResources {
 impl BlurResources {
     pub fn new(device: &Device) -> Self {
         let module = device.create_shader_module(ShaderModuleDescriptor {
-            label: Some("sluggrs blur shader"),
+            label: Some("sluggrs_skylines blur shader"),
             source: ShaderSource::Wgsl(std::borrow::Cow::Borrowed(crate::BLUR_SHADER_WGSL)),
         });
         let shadow_module = device.create_shader_module(ShaderModuleDescriptor {
-            label: Some("sluggrs shadow composite shader"),
+            label: Some("sluggrs_skylines shadow composite shader"),
             source: ShaderSource::Wgsl(std::borrow::Cow::Borrowed(crate::SHADOW_SHADER_WGSL)),
         });
 
@@ -128,22 +128,22 @@ impl BlurResources {
         };
 
         let blur_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("sluggrs blur bind group layout"),
+            label: Some("sluggrs_skylines blur bind group layout"),
             entries: &entries(std::mem::size_of::<BlurUniform>() as u64),
         });
         let shadow_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("sluggrs shadow composite bind group layout"),
+            label: Some("sluggrs_skylines shadow composite bind group layout"),
             entries: &entries(std::mem::size_of::<ShadowUniform>() as u64),
         });
 
         let blur_pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
-            label: Some("sluggrs blur pipeline layout"),
+            label: Some("sluggrs_skylines blur pipeline layout"),
             bind_group_layouts: &[Some(&blur_layout)],
             immediate_size: 0,
         });
 
         let blur_pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
-            label: Some("sluggrs blur pipeline"),
+            label: Some("sluggrs_skylines blur pipeline"),
             layout: Some(&blur_pipeline_layout),
             vertex: VertexState {
                 module: &module,
@@ -173,7 +173,7 @@ impl BlurResources {
         });
 
         let sampler = device.create_sampler(&SamplerDescriptor {
-            label: Some("sluggrs blur sampler"),
+            label: Some("sluggrs_skylines blur sampler"),
             address_mode_u: wgpu::AddressMode::ClampToEdge,
             address_mode_v: wgpu::AddressMode::ClampToEdge,
             address_mode_w: wgpu::AddressMode::ClampToEdge,
@@ -212,12 +212,12 @@ impl BlurResources {
             return &self.shadow_pipelines[index].3;
         }
         let layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
-            label: Some("sluggrs shadow composite pipeline layout"),
+            label: Some("sluggrs_skylines shadow composite pipeline layout"),
             bind_group_layouts: &[Some(&self.shadow_layout)],
             immediate_size: 0,
         });
         let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
-            label: Some("sluggrs shadow composite pipeline"),
+            label: Some("sluggrs_skylines shadow composite pipeline"),
             layout: Some(&layout),
             vertex: VertexState {
                 module: &self.shadow_module,
@@ -424,8 +424,8 @@ pub(crate) fn encode_blur(
     geometry: BlurGeometry,
 ) -> (wgpu::Texture, wgpu::Texture) {
     let (width, height) = geometry.source_size();
-    let horizontal = mask_texture(device, "sluggrs blur horizontal", width, height);
-    let vertical = mask_texture(device, "sluggrs blur vertical", width, height);
+    let horizontal = mask_texture(device, "sluggrs_skylines blur horizontal", width, height);
+    let vertical = mask_texture(device, "sluggrs_skylines blur vertical", width, height);
     let horizontal_view = horizontal.create_view(&TextureViewDescriptor::default());
     let vertical_view = vertical.create_view(&TextureViewDescriptor::default());
 
@@ -441,7 +441,7 @@ pub(crate) fn encode_blur(
         // rewriting it before submit would let the first encoded pass observe
         // the second's values.
         let uniform = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-            label: Some("sluggrs blur uniform"),
+            label: Some("sluggrs_skylines blur uniform"),
             contents: bytemuck::bytes_of(&BlurUniform {
                 texel,
                 direction,
@@ -452,7 +452,7 @@ pub(crate) fn encode_blur(
             usage: BufferUsages::UNIFORM,
         });
         let bind_group = device.create_bind_group(&BindGroupDescriptor {
-            label: Some("sluggrs blur bind group"),
+            label: Some("sluggrs_skylines blur bind group"),
             layout: &resources.blur_layout,
             entries: &[
                 BindGroupEntry {
@@ -507,7 +507,7 @@ pub(crate) fn finish_job(
     depth: f32,
 ) -> BlurJob {
     let uniform = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("sluggrs shadow uniform"),
+        label: Some("sluggrs_skylines shadow uniform"),
         contents: bytemuck::bytes_of(&ShadowUniform {
             color,
             rect: geometry.dest,
@@ -520,7 +520,7 @@ pub(crate) fn finish_job(
     });
     let view = result.create_view(&TextureViewDescriptor::default());
     let bind_group = device.create_bind_group(&BindGroupDescriptor {
-        label: Some("sluggrs shadow bind group"),
+        label: Some("sluggrs_skylines shadow bind group"),
         layout: &resources.shadow_layout,
         entries: &[
             BindGroupEntry {

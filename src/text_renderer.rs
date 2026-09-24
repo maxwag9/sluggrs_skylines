@@ -10,8 +10,9 @@ use crate::viewport::Viewport;
 use rustc_hash::FxHashMap;
 use wgpu::util::DeviceExt;
 use wgpu::{
-    Buffer, BufferDescriptor, BufferUsages, COPY_BUFFER_ALIGNMENT,
-    DepthStencilState, Device, MultisampleState, Queue, RenderPass, RenderPipeline,
+    BindGroup, BindGroupDescriptor, BindGroupEntry, Buffer, BufferBinding, BufferDescriptor,
+    BufferUsages, COPY_BUFFER_ALIGNMENT, CommandEncoder, DepthStencilState, Device,
+    MultisampleState, Queue, RenderPass, RenderPipeline,
 };
 
 use crate::types::TextBounds;
@@ -150,7 +151,7 @@ fn encode_blur_job(
     let (width, height) = geometry.source_size();
 
     let mask = device.create_texture(&wgpu::TextureDescriptor {
-        label: Some("sluggrs shadow mask"),
+        label: Some("sluggrs_skylines shadow mask"),
         size: wgpu::Extent3d {
             width,
             height,
@@ -183,7 +184,7 @@ fn encode_blur_job(
         _pad: 0,
     };
     let params_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("sluggrs shadow mask params"),
+        label: Some("sluggrs_skylines shadow mask params"),
         contents: bytemuck::bytes_of(&params),
         usage: BufferUsages::UNIFORM,
     });
@@ -196,14 +197,14 @@ fn encode_blur_job(
         offset: [0.0, 0.0],
     };
     let decoration_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("sluggrs shadow mask decoration"),
+        label: Some("sluggrs_skylines shadow mask decoration"),
         contents: bytemuck::bytes_of(&decoration),
         usage: BufferUsages::UNIFORM,
     });
     let alignment = device.limits().min_uniform_buffer_offset_alignment as u64;
     let stride = 32u64.next_multiple_of(alignment.max(1));
     let decoration_group = device.create_bind_group(&BindGroupDescriptor {
-        label: Some("sluggrs shadow mask decoration bind group"),
+        label: Some("sluggrs_skylines shadow mask decoration bind group"),
         layout: &state.uniforms_layout,
         entries: &[BindGroupEntry {
             binding: 0,
@@ -224,14 +225,14 @@ fn encode_blur_job(
         .copied()
         .collect();
     let vertex_buffer = device.create_buffer_init(&wgpu::util::BufferInitDescriptor {
-        label: Some("sluggrs shadow mask vertices"),
+        label: Some("sluggrs_skylines shadow mask vertices"),
         contents: bytemuck::cast_slice(&at_depth),
         usage: BufferUsages::VERTEX,
     });
 
     {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
-            label: Some("sluggrs shadow mask"),
+            label: Some("sluggrs_skylines shadow mask"),
             color_attachments: &[Some(wgpu::RenderPassColorAttachment {
                 view: &mask_view,
                 resolve_target: None,
@@ -584,7 +585,7 @@ impl TextRenderer {
     ) -> Self {
         let vertex_buffer_size = next_copy_buffer_size(4096);
         let vertex_buffer = device.create_buffer(&BufferDescriptor {
-            label: Some("sluggrs vertices"),
+            label: Some("sluggrs_skylines vertices"),
             size: vertex_buffer_size,
             usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
             mapped_at_creation: false,
@@ -596,7 +597,7 @@ impl TextRenderer {
 
         let raster_vertex_buffer_size = 4096u64;
         let raster_vertex_buffer = device.create_buffer(&BufferDescriptor {
-            label: Some("sluggrs raster vertices"),
+            label: Some("sluggrs_skylines raster vertices"),
             size: raster_vertex_buffer_size,
             usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
             mapped_at_creation: false,
@@ -641,7 +642,7 @@ impl TextRenderer {
     /// Prepare text areas for rendering, with per-glyph depth mapping.
     ///
     /// `encoder` and `cache` are unused - they exist for cryoglyph API
-    /// compatibility. sluggrs uses `queue.write_texture` (no encoder needed)
+    /// compatibility. sluggrs_skylines uses `queue.write_texture` (no encoder needed)
     /// and extracts outlines via skrifa (no swash rasterization).
     ///
     /// Three-pass structure:
@@ -667,11 +668,12 @@ impl TextRenderer {
         &mut self,
         device: &Device,
         queue: &Queue,
+        encoder: &mut CommandEncoder,
         font_system: &mut cosmic_text::FontSystem,
         atlas: &mut TextAtlas,
         viewport: &Viewport,
         text_areas: impl IntoIterator<Item = TextArea<'a>>,
-        mut metadata_to_depth: impl FnMut(usize) -> f32
+        mut metadata_to_depth: impl FnMut(usize) -> f32,
     ) -> Result<(), PrepareError> {
         assert_eq!(
             atlas.id(),
@@ -727,8 +729,6 @@ impl TextRenderer {
                 && cached.scale == text_area.scale
                 && cached.bounds == text_area.bounds
                 && cached.default_color == text_area.default_color
-                && cached.border_color == text_area.border_color
-                && cached.border_width == text_area.border_width
                 && cached.atlas_generation == atlas_gen
             {
                 let glyphs_valid = cached
@@ -1112,12 +1112,10 @@ impl TextRenderer {
                                             Some(c) => color_to_f32(c),
                                             None => area.default_color,
                                         },
-                                        border_color: color_to_f32(text_area.border_color),
                                         glyph_offset: v1_entry.glyph_offset,
                                         cmd_texel_count: v1_entry.cmd_texel_count,
                                         depth: metadata_to_depth(glyph.metadata),
                                         ppem: glyph.font_size * text_area.scale,
-                                        border_width: text_area.border_width
                                     });
                                     // COLRv1 is never decorated.
                                     area_decorated.push(false);
@@ -1136,9 +1134,12 @@ impl TextRenderer {
                                     Some(c) => color_to_f32(c),
                                     None => area.default_color,
                                 };
-                                let scale = glyph.font_size * text_area.scale / color_entry.units_per_em;
-                                let glyph_x = text_area.left + (glyph.x + glyph.x_offset) * text_area.scale;
-                                let glyph_y = text_area.top + (wi.line_y + glyph.y_offset) * text_area.scale;
+                                let scale =
+                                    glyph.font_size * text_area.scale / color_entry.units_per_em;
+                                let glyph_x =
+                                    text_area.left + (glyph.x + glyph.x_offset) * text_area.scale;
+                                let glyph_y =
+                                    text_area.top + (wi.line_y + glyph.y_offset) * text_area.scale;
                                 let depth = metadata_to_depth(glyph.metadata);
                                 let ppem = glyph.font_size * text_area.scale;
 
@@ -1172,12 +1173,10 @@ impl TextRenderer {
                                     area_instances.push(GlyphInstance {
                                         screen_rect,
                                         color,
-                                        border_color: color_to_f32(text_area.border_color),
                                         glyph_offset: layer.entry.glyph_offset,
                                         cmd_texel_count: 0,
                                         depth,
                                         ppem,
-                                        border_width: text_area.border_width
                                     });
                                     // COLRv0 layers are never decorated.
                                     area_decorated.push(false);
@@ -1214,7 +1213,6 @@ impl TextRenderer {
                         let fill_instance = GlyphInstance {
                             screen_rect,
                             color,
-                            border_color: color_to_f32(text_area.border_color),
                             glyph_offset: entry.glyph_offset,
                             cmd_texel_count: 0,
                             depth: metadata_to_depth(glyph.metadata),
@@ -1267,7 +1265,7 @@ impl TextRenderer {
                             distinct_keys: area_keys,
                             non_vector_glyphs: area_non_vector,
                             scroll,
-                            complete
+                            complete,
                         },
                     );
                 }
@@ -1490,12 +1488,17 @@ impl TextRenderer {
 
             let new_size = next_copy_buffer_size(vertices_raw.len() as u64);
             self.vertex_buffer = device.create_buffer(&BufferDescriptor {
-                label: Some("sluggrs vertices"),
+                label: Some("sluggrs_skylines vertices"),
                 size: new_size,
                 usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
                 mapped_at_creation: true,
             });
-            self.vertex_buffer.slice(..).get_mapped_range_mut().unwrap().slice(..vertices_raw.len()).copy_from_slice(vertices_raw); // TODO: No unwrap...
+
+            {
+                let mut b = self.vertex_buffer.slice(..).get_mapped_range_mut().expect("");
+                b.slice(..vertices_raw.len()).copy_from_slice(vertices_raw);
+            }
+
             self.vertex_buffer.unmap();
             self.vertex_buffer_size = new_size;
         }
@@ -1520,7 +1523,7 @@ impl TextRenderer {
             }
             self.border_vertex_buffer_size = next_copy_buffer_size(raw.len() as u64);
             self.border_vertex_buffer = Some(device.create_buffer(&BufferDescriptor {
-                label: Some("sluggrs border vertices"),
+                label: Some("sluggrs_skylines border vertices"),
                 size: self.border_vertex_buffer_size,
                 usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
                 mapped_at_creation: false,
@@ -1566,13 +1569,13 @@ impl TextRenderer {
             .is_none_or(|buffer| buffer.size() < required);
         if recreate {
             let buffer = device.create_buffer(&BufferDescriptor {
-                label: Some("sluggrs border uniforms"),
+                label: Some("sluggrs_skylines border uniforms"),
                 size: required.max(32),
                 usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
                 mapped_at_creation: false,
             });
             let bind_group = device.create_bind_group(&BindGroupDescriptor {
-                label: Some("sluggrs border uniforms bind group"),
+                label: Some("sluggrs_skylines border uniforms bind group"),
                 layout: &state.uniforms_layout,
                 entries: &[BindGroupEntry {
                     binding: 0,
@@ -1613,7 +1616,7 @@ impl TextRenderer {
             self.raster_vertex_buffer.destroy();
             let new_size = (data.len() as u64).next_power_of_two().max(4096);
             self.raster_vertex_buffer = device.create_buffer(&BufferDescriptor {
-                label: Some("sluggrs raster vertices"),
+                label: Some("sluggrs_skylines raster vertices"),
                 size: new_size,
                 usage: BufferUsages::VERTEX | BufferUsages::COPY_DST,
                 mapped_at_creation: false,
@@ -1624,24 +1627,26 @@ impl TextRenderer {
     }
 
     /// Prepares all of the provided text areas for rendering.
-    #[allow(clippy::too_many_arguments)]
+    #[allow(clippy::too_many_arguments)] // matches cryoglyph's API
     pub fn prepare<'a>(
         &mut self,
         device: &Device,
         queue: &Queue,
+        encoder: &mut CommandEncoder,
         font_system: &mut cosmic_text::FontSystem,
         atlas: &mut TextAtlas,
         viewport: &Viewport,
-        text_areas: impl IntoIterator<Item = TextArea<'a>>
+        text_areas: impl IntoIterator<Item = TextArea<'a>>,
     ) -> Result<(), PrepareError> {
         self.prepare_with_depth(
             device,
             queue,
+            encoder,
             font_system,
             atlas,
             viewport,
             text_areas,
-            zero_depth
+            zero_depth,
         )
     }
 
@@ -2045,12 +2050,10 @@ mod tests {
         let instance = GlyphInstance {
             screen_rect: [2.0, 2.0, 2.0, 2.0],
             color: [0.0; 4],
-            border_color: [0.0; 4],
             glyph_offset: 0,
             cmd_texel_count: 0,
             depth: 0.0,
             ppem: 0.0,
-            border_width: 0.0
         };
         let (visible, decorated, complete) = re_cull_vector_instances(
             &[instance],

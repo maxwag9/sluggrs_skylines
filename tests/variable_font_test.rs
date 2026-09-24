@@ -3,7 +3,7 @@
 /// Uses the Inter Variable font bundled in examples/fonts/InterVariable.ttf
 /// to verify that extracting outlines at different weight settings produces
 /// meaningfully different results.
-use sluggrs::outline::{char_to_glyph_id, extract_outline};
+use sluggrs_skylines::outline::{char_to_glyph_id, extract_outline};
 
 const INTER_VARIABLE: &[u8] = include_bytes!("../examples/fonts/InterVariable.ttf");
 

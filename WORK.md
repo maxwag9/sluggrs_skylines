@@ -21,7 +21,7 @@ Generalize text borders into ordered text decorations: outline-only
   SUBMIT IT - preparing into one encoder and rendering into another
   silently drops every blur pass.
 - TODO: `repos/iced` constructs `TextArea` without the decorations field
-  and has not compiled against sluggrs HEAD since the border feature
+  and has not compiled against sluggrs_skylines HEAD since the border feature
   landed. It needs `decorations: &[]`.
 
 Do NOT run cargo or brokkr; the orchestrator runs all builds, tests, and

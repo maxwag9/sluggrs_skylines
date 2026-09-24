@@ -2,7 +2,7 @@
 
 ## Problem
 
-sluggrs cannot render bitmap-only glyphs (color emoji, bitmap fonts).
+sluggrs_skylines cannot render bitmap-only glyphs (color emoji, bitmap fonts).
 These glyphs have no vector outline - `extract_outline()` returns `None`.
 Currently they are silently skipped, producing invisible text. This is
 a user-visible bug that must be fixed before the iced integration ships.
@@ -32,7 +32,7 @@ Handles both paths transparently:
 - Fragment shader uses `content_type` uniform to pick blend mode
 - The caller (iced's text.rs) doesn't know or care which path a glyph takes
 
-### sluggrs currently
+### sluggrs_skylines currently
 
 - Tries `extract_outline()` → works for vector glyphs
 - Returns `None` for bitmap-only glyphs → marks as `NON_VECTOR_GLYPH`
@@ -40,7 +40,7 @@ Handles both paths transparently:
 
 ## Options
 
-### Option A: Implement bitmap atlas in sluggrs
+### Option A: Implement bitmap atlas in sluggrs_skylines
 
 Add a third texture (Rgba8) to TextAtlas for bitmap glyphs, with a
 simple packer (etagere or manual). When `extract_outline()` returns
@@ -61,7 +61,7 @@ is set, or use a union-style layout.
 bind group.
 
 **Pros**:
-- Self-contained - sluggrs handles all text rendering
+- Self-contained - sluggrs_skylines handles all text rendering
 - Single crate dependency for iced
 - Can optimize the bitmap path independently
 - Full control over atlas management, growth, eviction
@@ -81,13 +81,13 @@ pressure, subpixel positioning for bitmap glyphs).
 ### Option B: Delegate bitmap glyphs to cryoglyph
 
 Keep cryoglyph in iced's workspace (it's already there). During
-`prepare()`, split glyphs into two lists: vector glyphs (sluggrs)
+`prepare()`, split glyphs into two lists: vector glyphs (sluggrs_skylines)
 and bitmap glyphs (cryoglyph). In `render()`, issue two draw calls.
 
-**Implementation**: sluggrs's TextRenderer holds an optional
+**Implementation**: sluggrs_skylines's TextRenderer holds an optional
 cryoglyph::TextRenderer internally. When a non-vector glyph is
 detected, it's routed to cryoglyph's prepare path. The render
-call draws sluggrs glyphs first, then cryoglyph glyphs.
+call draws sluggrs_skylines glyphs first, then cryoglyph glyphs.
 
 **No shader changes**: cryoglyph handles its own pipeline, shaders,
 and atlas textures entirely.
@@ -102,11 +102,11 @@ and atlas textures entirely.
 **Cons**:
 - cryoglyph becomes a real dependency (currently just in workspace)
 - Two render pipelines active simultaneously
-- Two sets of GPU resources (cryoglyph's atlas textures + sluggrs's
+- Two sets of GPU resources (cryoglyph's atlas textures + sluggrs_skylines's
   curve/band textures)
-- Version coupling - cryoglyph and sluggrs must agree on wgpu version
+- Version coupling - cryoglyph and sluggrs_skylines must agree on wgpu version
 - The cryoglyph Cache, TextAtlas, and Viewport must be initialized
-  and maintained alongside sluggrs's equivalents
+  and maintained alongside sluggrs_skylines's equivalents
 - cryoglyph's TextArea/TextBounds types are identical to ours but
   technically separate types - need conversion or shared definition
 
@@ -115,16 +115,16 @@ risk.
 
 ### Option C: Delegate at the iced level (text.rs)
 
-Don't change sluggrs at all. Instead, modify iced's `text.rs` to
-maintain both a sluggrs renderer and a cryoglyph renderer. Route
+Don't change sluggrs_skylines at all. Instead, modify iced's `text.rs` to
+maintain both a sluggrs_skylines renderer and a cryoglyph renderer. Route
 each glyph to the appropriate renderer based on whether it has a
 vector outline.
 
 **Pros**:
-- sluggrs stays focused on vector rendering only
+- sluggrs_skylines stays focused on vector rendering only
 - Clean separation of concerns
 - iced already manages the cryoglyph dependency
-- No changes to sluggrs's API or shader
+- No changes to sluggrs_skylines's API or shader
 
 **Cons**:
 - Requires modifying iced's text.rs more substantially
@@ -143,31 +143,31 @@ Rationale:
 
 1. **Option C is the fastest to ship.** The iced fork already has
    cryoglyph in the workspace. We can keep cryoglyph active alongside
-   sluggrs with minimal text.rs changes. Non-vector glyphs go through
+   sluggrs_skylines with minimal text.rs changes. Non-vector glyphs go through
    the existing proven path.
 
-2. **The detection problem is solvable.** sluggrs can export a function
+2. **The detection problem is solvable.** sluggrs_skylines can export a function
    like `has_vector_outline(font_data, face_index, glyph_id)` that
    iced's text.rs calls to decide the routing. This is a cheap check
    (just attempt outline extraction, no curve building).
 
 3. **Option A is the right long-term answer** but it's a substantial
    investment that doesn't need to block the initial integration. Once
-   sluggrs is stable in production, adding a bitmap atlas is a natural
+   sluggrs_skylines is stable in production, adding a bitmap atlas is a natural
    next step that eliminates the cryoglyph dependency entirely.
 
-4. **Option B is the worst of both worlds.** It couples sluggrs to
+4. **Option B is the worst of both worlds.** It couples sluggrs_skylines to
    cryoglyph at the library level, which is harder to undo than
    coupling at the integration level (Option C).
 
 ## Option C Implementation Sketch
 
-### sluggrs changes
+### sluggrs_skylines changes
 
 Add a detection function:
 
 ```rust
-/// Check whether a glyph has a vector outline that sluggrs can render.
+/// Check whether a glyph has a vector outline that sluggrs_skylines can render.
 /// Returns false for bitmap-only glyphs (emoji, bitmap fonts).
 pub fn has_vector_outline(
     font_data: &[u8],
@@ -187,7 +187,7 @@ split into two batches:
 
 ```rust
 // Rough sketch - actual implementation needs more thought
-let mut sluggrs_areas = vec![];  // TextAreas with only vector glyphs
+let mut sluggrs_skylines_areas = vec![];  // TextAreas with only vector glyphs
 let mut cryoglyph_areas = vec![]; // TextAreas with only bitmap glyphs
 
 // For mixed TextAreas, we'd need to render the same TextArea through
@@ -199,38 +199,38 @@ contain both vector and bitmap glyphs (e.g. "Hello 👋 world"). We
 can't split at the TextArea level - we'd need glyph-level routing.
 
 **Better approach**: Render every TextArea through both renderers.
-sluggrs skips non-vector glyphs (it already does). cryoglyph renders
-all glyphs. The visual result is correct: sluggrs draws vector text,
+sluggrs_skylines skips non-vector glyphs (it already does). cryoglyph renders
+all glyphs. The visual result is correct: sluggrs_skylines draws vector text,
 cryoglyph draws everything but its vector glyphs are drawn on top
-of (or behind) sluggrs's.
+of (or behind) sluggrs_skylines's.
 
 **Even better**: Render every TextArea through both renderers, but
 have cryoglyph skip vector glyphs. This avoids double-rendering.
 This requires cryoglyph to know which glyphs to skip, which brings
 us back to the detection problem.
 
-**Simplest correct approach**: Render all text through sluggrs (which
+**Simplest correct approach**: Render all text through sluggrs_skylines (which
 skips non-vector glyphs) AND all text through cryoglyph (which renders
-everything). Since cryoglyph renders behind sluggrs, the vector glyphs
-from cryoglyph are hidden behind sluggrs's higher-quality vector
-rendering. Emoji from cryoglyph shows through because sluggrs
+everything). Since cryoglyph renders behind sluggrs_skylines, the vector glyphs
+from cryoglyph are hidden behind sluggrs_skylines's higher-quality vector
+rendering. Emoji from cryoglyph shows through because sluggrs_skylines
 doesn't draw anything there.
 
 This works if:
 - Both renderers use the same positions (they do - same TextArea)
-- sluggrs draws on top of cryoglyph (draw order in render pass)
+- sluggrs_skylines draws on top of cryoglyph (draw order in render pass)
 - Alpha blending doesn't cause artifacts for double-drawn vector
-  glyphs (it shouldn't - sluggrs's output is opaque in the glyph
+  glyphs (it shouldn't - sluggrs_skylines's output is opaque in the glyph
   interior, and both renderers produce the same shape)
 
 **This might be the pragmatic answer**: zero routing logic, both
-renderers see all text, sluggrs handles what it can, cryoglyph
+renderers see all text, sluggrs_skylines handles what it can, cryoglyph
 catches what falls through. Double rendering of vector glyphs
 wastes some GPU work but produces correct output.
 
 ## Open Questions
 
-1. **Draw order and blending**: If cryoglyph draws first and sluggrs
+1. **Draw order and blending**: If cryoglyph draws first and sluggrs_skylines
    draws on top, does alpha blending produce correct results for
    overlapping vector glyphs? Both produce similar but not identical
    coverage - could cause visible fringing.
@@ -242,6 +242,6 @@ wastes some GPU work but produces correct output.
 3. **COLR/CPAL vector emoji**: Some emoji fonts use COLR/CPAL tables
    which define emoji as layered vector outlines (not bitmaps). swash
    can rasterize these to RGBA bitmaps, but skrifa can also extract
-   the outlines. Should sluggrs try to render these natively? This is
+   the outlines. Should sluggrs_skylines try to render these natively? This is
    complex (layered colored fills) but would avoid the bitmap path for
    modern emoji fonts.

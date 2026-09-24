@@ -1336,7 +1336,7 @@ fn checked_buffer_end(
 
 fn create_glyph_buffer(device: &Device, capacity_texels: u32) -> wgpu::Buffer {
     device.create_buffer(&wgpu::BufferDescriptor {
-        label: Some("sluggrs glyph buffer"),
+        label: Some("sluggrs_skylines glyph buffer"),
         size: capacity_texels as u64 * BYTES_PER_TEXEL,
         usage: wgpu::BufferUsages::STORAGE | wgpu::BufferUsages::COPY_DST,
         mapped_at_creation: false,

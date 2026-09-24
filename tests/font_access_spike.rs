@@ -3,7 +3,7 @@
 //! Run with: cargo test --test font_access_spike -- --nocapture
 
 use cosmic_text::{Attrs, Buffer, FontSystem, Metrics, Shaping};
-use sluggrs::outline::extract_outline;
+use sluggrs_skylines::outline::extract_outline;
 
 #[test]
 fn extract_outline_from_cosmic_text_layout() {

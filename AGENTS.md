@@ -1,4 +1,4 @@
-# sluggrs
+# sluggrs_skylines
 
 GPU-based vector text rendering using the Slug algorithm. Drop-in
 replacement for cryoglyph in iced's wgpu text rendering pipeline. Evaluates
@@ -49,7 +49,7 @@ don't - the orchestrator runs the checks.
 If brokkr reports a lock (`already locked by PID`), another project is using it.
 Wait and retry - the lock exists to prevent concurrent benchmark interference.
 
-### Available in sluggrs
+### Available in sluggrs_skylines
 ```sh
 brokkr check                                  # clippy + tests
 brokkr check -- --test glyph_pipeline_test    # run one test file
@@ -109,11 +109,11 @@ costs.
 - **skrifa tracks cosmic-text, not latest.** cosmic-text 0.19 depends on
   skrifa 0.40 directly *and* on skrifa 0.42 via swash. Our 0.40 pin dedups
   with cosmic-text's copy; bumping to 0.45 would put a third skrifa in every
-  downstream build for no gain, since skrifa is internal to sluggrs (not
+  downstream build for no gain, since skrifa is internal to sluggrs_skylines (not
   re-exported, no types cross the iced boundary). Bump only when cosmic-text
   does.
 - **wgpu must match iced.** wgpu types (`Device`, `RenderPass`,
-  `TextureFormat`) cross the sluggrs/iced API boundary, so wgpu 30 has to
+  `TextureFormat`) cross the sluggrs_skylines/iced API boundary, so wgpu 30 has to
   wait for upstream iced.
 
 hotpath has no downstream coupling and can be bumped freely.

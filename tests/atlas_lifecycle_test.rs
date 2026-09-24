@@ -7,7 +7,7 @@
 //!     cargo test --test atlas_lifecycle_test -- --ignored --nocapture
 
 use cosmic_text::{Attrs, Buffer, Color, FontSystem, Metrics, Shaping};
-use sluggrs::{
+use sluggrs_skylines::{
     Cache, ColorMode, RenderError, Resolution, SwashCache, TextArea, TextAtlas, TextBounds,
     TextRenderer, Viewport,
 };
@@ -100,7 +100,7 @@ impl TestHarness {
     /// Prepare a text area containing the given string. Returns Ok(()) on success.
     /// This drives glyph extraction, outline preparation, and atlas upload
     /// through the public TextRenderer::prepare path.
-    fn prepare_text(&mut self, text: &str) -> Result<(), sluggrs::PrepareError> {
+    fn prepare_text(&mut self, text: &str) -> Result<(), sluggrs_skylines::PrepareError> {
         let metrics = Metrics::new(24.0, 30.0);
         let mut buffer = Buffer::new(&mut self.font_system, metrics);
         buffer.set_text(text, &Attrs::new(), Shaping::Advanced, None);
@@ -128,6 +128,7 @@ impl TestHarness {
         self.renderer.prepare(
             &self.device,
             &self.queue,
+            &mut encoder,
             &mut self.font_system,
             &mut self.atlas,
             &self.viewport,
@@ -237,6 +238,7 @@ fn prepare_rejects_different_atlas_than_constructor() {
         h.renderer.prepare(
             &h.device,
             &h.queue,
+            &mut encoder,
             &mut h.font_system,
             &mut atlas_b,
             &h.viewport,

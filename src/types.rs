@@ -13,7 +13,7 @@ pub struct TextBounds {
     pub left: i32,
     pub top: i32,
     pub right: i32,
-    pub bottom: i32
+    pub bottom: i32,
 }
 
 /// A solid shape drawn underneath monochrome vector glyphs: an outline, a
@@ -396,7 +396,7 @@ pub enum ColorMode {
     /// Accurate color management (sRGB texture for colored glyphs).
     Accurate,
     /// Web color management (linear RGB texture with sRGB colors).
-    Web
+    Web,
 }
 
 /// An error that occurred while preparing text for rendering.

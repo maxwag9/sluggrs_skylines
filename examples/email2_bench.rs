@@ -9,13 +9,13 @@
 //! This stresses cold-path glyph processing, atlas growth, and GPU rendering
 //! at realistic international workloads.
 //!
-//! Run via brokkr:  brokkr sluggrs hotpath --target email2
+//! Run via brokkr:  brokkr sluggrs_skylines hotpath --target email2
 //! Run standalone:  cargo run --release --example email2-bench --features hotpath
 
 use std::time::Instant;
 
 use cosmic_text::{Attrs, Buffer, Color, Family, FontSystem, Metrics, Shaping, Weight};
-use sluggrs::{
+use sluggrs_skylines::{
     Cache, ColorMode, Resolution, SwashCache, TextArea, TextAtlas, TextBounds, TextRenderer,
     Viewport,
 };
@@ -165,7 +165,7 @@ const LATIN_SUBJECTS: &[&str] = &[
     "Re: Noto CJK font loading latency in FontSystem::new()",
     "Meeting notes: shader optimization review (April 3)",
     "Ärger mit Übersetzungen - i18n text rendering Prüfung",
-    "Résultats des tests: comparaison cryoglyph vs sluggrs",
+    "Résultats des tests: comparaison cryoglyph vs sluggrs_skylines",
     "Þórdís: Nordic glyph coverage and diacritic rendering",
 ];
 
@@ -174,7 +174,7 @@ const LATIN_BODIES: &[&str] = &[
      is dominated by per-glyph allocation in build_bands(). Key findings: BandScratch \
      reuse saves ~100µs, prepare_outline() clone is waste, and batching write_buffer \
      from 92 calls to 1 saves ~20-90µs. GPU time is already good at 11µs headless.",
-    "Quick update on the integration timeline. The sluggrs branch passes basic rendering \
+    "Quick update on the integration timeline. The sluggrs_skylines branch passes basic rendering \
      tests. Remaining: emoji fallback, trim() invalidation, ColorMode, stride alignment. \
      The Noto font family has 2,000+ glyphs per weight - mixed content easily hits 500+ \
      distinct glyphs on first render.",
@@ -187,7 +187,7 @@ const LATIN_BODIES: &[&str] = &[
     "Thinking ahead to rayon for parallel cold-glyph processing. 4 threads: 3.6× speedup. \
      8 threads: 6.0× speedup. 16 threads: 6.5× (diminishing). Thread pool creation \
      overhead dominates below ~50 glyphs. For CJK (500+), 8 threads should scale linearly.",
-    "Here's the OKR draft: O1 Ship sluggrs as default in iced. KR1 Pass all visual \
+    "Here's the OKR draft: O1 Ship sluggrs_skylines as default in iced. KR1 Pass all visual \
      regression tests. KR2 Cold prepare < 500µs for 100 Latin glyphs. KR3 GPU render \
      < 50µs for 1000 instances at 1080p. O2 International text without degradation.",
     "Notes from the shader review: pack i16 pairs into i32, precompute a,b from unshifted \
@@ -282,7 +282,7 @@ impl Pools {
 // ---------------------------------------------------------------------------
 
 fn main() {
-    let _guard = hotpath::HotpathGuardBuilder::new("sluggrs::email2_bench")
+    let _guard = hotpath::HotpathGuardBuilder::new("sluggrs_skylines::email2_bench")
         .percentiles(&[50.0, 95.0, 99.0])
         .functions_limit(0)
         .build();
@@ -487,7 +487,7 @@ fn create_device() -> (wgpu::Device, wgpu::Queue) {
     }
 
     pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-        label: Some("sluggrs email2-bench"),
+        label: Some("sluggrs_skylines email2-bench"),
         required_features: features,
         ..Default::default()
     }))
@@ -570,12 +570,13 @@ impl RenderHarness {
         }
     }
 
-    fn prepare_areas(&mut self, areas: &[TextArea]) -> Result<(), sluggrs::PrepareError> {
-        let encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+    fn prepare_areas(&mut self, areas: &[TextArea]) -> Result<(), sluggrs_skylines::PrepareError> {
+        let mut encoder = self.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
         self.renderer.prepare(
             &self.device,
             &self.queue,
+            &mut encoder,
             &mut self.font_system,
             &mut self.atlas,
             &self.viewport,

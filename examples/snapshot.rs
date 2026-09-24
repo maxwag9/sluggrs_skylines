@@ -1,7 +1,7 @@
 #![allow(clippy::unwrap_used)]
 //! Visual snapshot target for brokkr integration.
 //!
-//! Contract (brokkr src/sluggrs/cmd.rs):
+//! Contract (brokkr src/sluggrs_skylines/cmd.rs):
 //! - invoked with cwd = project root, release profile, default features
 //! - argv: --id <id> --output <abs> --width <n> --height <n>,
 //!   then --font <abs> repeated, then --optional-font <abs> repeated
@@ -19,7 +19,7 @@ use std::fs;
 use std::io::BufWriter;
 
 use cosmic_text::{Attrs, Buffer, Color, Family, FontSystem, Metrics, Shaping, Weight};
-use sluggrs::{
+use sluggrs_skylines::{
     Cache, ColorMode, DecorationMode, Resolution, SwashCache, TextArea, TextAtlas, TextBounds,
     TextDecoration, TextRenderer, Viewport,
 };
@@ -378,7 +378,7 @@ fn main() {
     let info = adapter.get_info();
 
     let (device, queue) = pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-        label: Some("sluggrs snapshot"),
+        label: Some("sluggrs_skylines snapshot"),
         ..Default::default()
     }))
     .expect("Failed to create device");
@@ -465,10 +465,11 @@ fn main() {
         .collect();
 
     let mut swash_cache = SwashCache::new();
-    let encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+    let mut encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
     renderer.prepare(
             &device,
             &queue,
+            &mut encoder,
             &mut font_system,
             &mut atlas,
             &viewport,

@@ -1,4 +1,4 @@
-# sluggrs: Slug-Based Text Renderer for iced
+# sluggrs_skylines: Slug-Based Text Renderer for iced
 
 > **Note**: This design doc was written before the PoC. Some details
 > (module names, API signatures) may have evolved. See `src/` for the
@@ -24,7 +24,7 @@ cosmic-text                      (keep - shaping, bidi, line-breaking)
     │
     │  produces: glyph IDs + positions + font refs
     ▼
-sluggrs                       (new crate - replaces cryoglyph)
+sluggrs_skylines                       (new crate - replaces cryoglyph)
     │
     ├── outline extraction       (skrifa - read bezier curves from font)
     ├── band builder             (CPU - spatial acceleration structure)
@@ -34,7 +34,7 @@ sluggrs                       (new crate - replaces cryoglyph)
     └── render pipeline          (wgpu - draw calls into render pass)
     │
     ▼
-iced_wgpu/src/text.rs            (modified - calls sluggrs instead of cryoglyph)
+iced_wgpu/src/text.rs            (modified - calls sluggrs_skylines instead of cryoglyph)
 ```
 
 ## Integration into iced
@@ -48,14 +48,14 @@ Current:
 
 Proposed:
   app → our-fork/iced (git)
-          → iced_wgpu → sluggrs (git or path dep) → wgpu 28
+          → iced_wgpu → sluggrs_skylines (git or path dep) → wgpu 28
 ```
 
 ### What changes in iced
 
 **One file**: `iced_wgpu/src/text.rs` (~650 lines). This is the sole integration point where cryoglyph is imported and used. The rest of iced_wgpu is unaffected.
 
-**Workspace Cargo.toml**: Swap cryoglyph dependency for sluggrs.
+**Workspace Cargo.toml**: Swap cryoglyph dependency for sluggrs_skylines.
 
 ### The contract text.rs expects
 
@@ -76,7 +76,7 @@ impl Viewport {
 }
 
 // Glyph data store (replaces texture atlas)
-// In sluggrs this holds curve + band textures instead of bitmap atlases
+// In sluggrs_skylines this holds curve + band textures instead of bitmap atlases
 pub struct TextAtlas { .. }
 impl TextAtlas {
     pub fn new(device: &wgpu::Device, queue: &wgpu::Queue, cache: &Cache,
@@ -131,7 +131,7 @@ The key difference is internal: `prepare_with_depth` no longer rasterizes glyphs
 
 And `render` sets the Slug pipeline + textures and draws instanced quads.
 
-## sluggrs Crate Design
+## sluggrs_skylines Crate Design
 
 ### Dependencies
 
@@ -148,7 +148,7 @@ rustc-hash = "2"         # fast hashing
 ### Module structure
 
 ```
-sluggrs/
+sluggrs_skylines/
 ├── Cargo.toml
 └── src/
     ├── lib.rs              Public API (Cache, TextAtlas, TextRenderer, Viewport, etc.)
@@ -356,7 +356,7 @@ Slug's reference implementation does grayscale anti-aliasing. Subpixel (LCD) ren
 - Validate visual quality against cryoglyph output
 - No iced integration yet
 
-### Phase 2: sluggrs crate
+### Phase 2: sluggrs_skylines crate
 
 - Implement full crate with the API described above
 - Handle Latin + CJK + common Unicode ranges
@@ -366,7 +366,7 @@ Slug's reference implementation does grayscale anti-aliasing. Subpixel (LCD) ren
 ### Phase 3: iced integration
 
 - Fork squidowl/iced
-- Swap cryoglyph → sluggrs in workspace Cargo.toml
+- Swap cryoglyph → sluggrs_skylines in workspace Cargo.toml
 - Rewrite `iced_wgpu/src/text.rs` integration
 - Point ratatoskr app at forked iced
 - Validate in the actual email client

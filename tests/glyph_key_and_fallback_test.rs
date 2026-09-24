@@ -6,7 +6,7 @@ use std::collections::HashSet;
 use std::hash::{DefaultHasher, Hash, Hasher};
 
 use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping};
-use sluggrs::glyph_cache::{GlyphEntry, GlyphKey, GlyphMap, NON_VECTOR_GLYPH};
+use sluggrs_skylines::glyph_cache::{GlyphEntry, GlyphKey, GlyphMap, NON_VECTOR_GLYPH};
 
 // ---------------------------------------------------------------------------
 // Helpers

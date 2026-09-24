@@ -2,7 +2,7 @@
 
 # Claude-side process
 
-Project knowledge - what sluggrs is, code structure, brokkr, lints, tech
+Project knowledge - what sluggrs_skylines is, code structure, brokkr, lints, tech
 stack and version pins - lives in `AGENTS.md`: imported above for Claude,
 picked up natively by codex. This file holds what codex sessions never
 touch: orchestration (the review tool, the fix loop), git, bash rules,
@@ -85,7 +85,7 @@ the old `-n` flag and `results --compare-last` are gone.
 
 Both CPU and GPU profiling run headless - no user interaction needed.
 
-- `brokkr sluggrs hotpath` measures CPU-side prepare AND GPU fragment shader
+- `brokkr sluggrs_skylines hotpath` measures CPU-side prepare AND GPU fragment shader
   time via wgpu-profiler timestamp queries. Renders to an offscreen 1920x1080
   texture. The `gpu_text_render_us` KV is stored in results.db.
 - `cargo run --example demo` also emits `gpu_text_render_ms` to stderr on
@@ -101,41 +101,41 @@ Baseline (RTX 3080, 92 glyphs): CPU prepare 753us, GPU render 11us
 
 ## iced integration
 
-`repos/iced/` is the canonical checkout. Branch `sluggrs`, with `text.rs`
-swapped from cryoglyph to sluggrs (cryoglyph is removed from the workspace
+`repos/iced/` is the canonical checkout. Branch `sluggrs_skylines`, with `text.rs`
+swapped from cryoglyph to sluggrs_skylines (cryoglyph is removed from the workspace
 entirely). To test in ratatoskr, point its iced dependency at the fork.
 
 Remotes in `repos/iced/` are named unusually - check before pulling:
 - `origin` = `squidowl/iced`, branch `arboard-full-patch` (**upstream**)
-- `fork` = `folknor/iced`, branch `sluggrs` (ours)
+- `fork` = `folknor/iced`, branch `sluggrs_skylines` (ours)
 
 So `git pull` there pulls from *upstream*, not the fork.
 
 ### The path dependency
 
-iced's `Cargo.toml` uses `sluggrs = { path = "../../../sluggrs" }`. That
+iced's `Cargo.toml` uses `sluggrs_skylines = { path = "../../../sluggrs_skylines" }`. That
 resolves only from a checkout exactly three levels below `/home/folk/Programs`,
 i.e. `repos/iced/`. A clone anywhere else - e.g. `/home/folk/Programs/iced` -
-resolves to `/home/sluggrs` and fails to build.
+resolves to `/home/sluggrs_skylines` and fails to build.
 
 `repos/iced/` is the **only** iced checkout, and the one downstream projects
 point their iced dependency at. Don't make a second one - `research/` briefly
 held a shallow copy and it only caused confusion about which tree was live.
 
 Because it's a path dep and not a git rev, iced always sees the working tree
-of the local sluggrs checkout. No push or rev bump needed to test a change.
+of the local sluggrs_skylines checkout. No push or rev bump needed to test a change.
 
 ### Catching up with upstream
 
 The fork is kept at exactly **one commit** ahead of
-`origin/arboard-full-patch` ("Replace cryoglyph with sluggrs..."), which
+`origin/arboard-full-patch` ("Replace cryoglyph with sluggrs_skylines..."), which
 makes catch-ups mechanical:
 
 ```sh
 git fetch origin
-git rebase --onto origin/arboard-full-patch <our-commit>^ sluggrs
+git rebase --onto origin/arboard-full-patch <our-commit>^ sluggrs_skylines
 cargo check --workspace
-git push --force-with-lease fork sluggrs
+git push --force-with-lease fork sluggrs_skylines
 ```
 
 **Before analyzing, confirm the tracking ref is live.** The clone was once
@@ -154,7 +154,7 @@ by commit subject instead, and drop the duplicates. squidowl adapts the
 arboard patches to upstream refactors themselves (e.g. the unified
 `core::text` editing) - their versions are canonical; never keep our own
 port of the same behavior alongside theirs. Never `git pull` (merge) the
-fork after a rebase; reset to `fork/sluggrs` instead.
+fork after a rebase; reset to `fork/sluggrs_skylines` instead.
 
 ## Code review
 

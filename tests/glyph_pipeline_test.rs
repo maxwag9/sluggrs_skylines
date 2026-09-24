@@ -1,4 +1,4 @@
-//! Unit tests for the sluggrs glyph pipeline.
+//! Unit tests for the sluggrs_skylines glyph pipeline.
 //!
 //! Run with: cargo test --test glyph_pipeline_test
 
@@ -6,9 +6,9 @@ use std::collections::HashMap;
 use std::hash::{DefaultHasher, Hash, Hasher};
 
 use cosmic_text::{Attrs, Buffer, FontSystem, Metrics, Shaping};
-use sluggrs::band::{CurveLocation, build_bands};
-use sluggrs::glyph_cache::{GlyphEntry, GlyphKey, GlyphMap, NON_VECTOR_GLYPH};
-use sluggrs::outline::extract_outline;
+use sluggrs_skylines::band::{CurveLocation, build_bands};
+use sluggrs_skylines::glyph_cache::{GlyphEntry, GlyphKey, GlyphMap, NON_VECTOR_GLYPH};
+use sluggrs_skylines::outline::extract_outline;
 
 // ---------------------------------------------------------------------------
 // Helpers
@@ -378,7 +378,7 @@ fn band_data_sanity() {
         band_count_x,
         band_count_y,
         Vec::new(),
-        &mut sluggrs::band::BandScratch::default(),
+        &mut sluggrs_skylines::band::BandScratch::default(),
     );
 
     // Band counts should match requested
@@ -452,7 +452,7 @@ fn band_data_single_band() {
         1,
         1,
         Vec::new(),
-        &mut sluggrs::band::BandScratch::default(),
+        &mut sluggrs_skylines::band::BandScratch::default(),
     );
 
     assert_eq!(band_data.band_count_x, 1);

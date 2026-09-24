@@ -1,13 +1,13 @@
 use skrifa::setting::VariationSetting;
-use sluggrs::band::{CurveLocation, build_bands};
-use sluggrs::outline::extract_outline;
+use sluggrs_skylines::band::{CurveLocation, build_bands};
+use sluggrs_skylines::outline::extract_outline;
 
 #[test]
 fn dump_bold_r_geometry() {
     let font_data = std::fs::read("examples/fonts/InterVariable.ttf")
         .expect("InterVariable.ttf must be present");
     let glyph_id =
-        sluggrs::outline::char_to_glyph_id(&font_data, 0, 'r').expect("'r' should be mapped");
+        sluggrs_skylines::outline::char_to_glyph_id(&font_data, 0, 'r').expect("'r' should be mapped");
 
     let wght = skrifa::Tag::new(b"wght");
     let location = [VariationSetting::new(wght, 700.0)];
@@ -66,7 +66,7 @@ fn dump_bold_r_geometry() {
         band_count,
         band_count,
         Vec::new(),
-        &mut sluggrs::band::BandScratch::default(),
+        &mut sluggrs_skylines::band::BandScratch::default(),
     );
 
     // Dump which bands contain curves 2..5

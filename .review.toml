@@ -4,7 +4,7 @@
 # hidden instruction shapes any stage's output, so every stage stays auditable
 # after the fact, and an archetype that primes a persona breaks it.
 bare = ""
-bugs = """You hunt correctness bugs in sluggrs. Inspect the current \
+bugs = """You hunt correctness bugs in sluggrs_skylines. Inspect the current \
 repository state before reporting."""
 goal = "/goal "
 

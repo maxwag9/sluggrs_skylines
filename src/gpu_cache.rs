@@ -68,15 +68,44 @@ pub(crate) struct BorderPipelineState {
 impl Cache {
     pub fn new(device: &Device) -> Self {
         let shader = device.create_shader_module(ShaderModuleDescriptor {
-            label: Some("sluggrs shader"),
+            label: Some("sluggrs_skylines shader"),
             source: ShaderSource::Wgsl(std::borrow::Cow::Borrowed(crate::SIMPLE_SHADER_WGSL)),
         });
 
-        let vertex_buffer_layout = GlyphInstance::layout();
+        let vertex_buffer_layout = wgpu::VertexBufferLayout {
+            array_stride: mem::size_of::<GlyphInstance>() as wgpu::BufferAddress,
+            step_mode: wgpu::VertexStepMode::Instance,
+            attributes: &[
+                // screen_rect: vec4<f32>
+                wgpu::VertexAttribute {
+                    format: VertexFormat::Float32x4,
+                    offset: 0,
+                    shader_location: 0,
+                },
+                // color: vec4<f32>
+                wgpu::VertexAttribute {
+                    format: VertexFormat::Float32x4,
+                    offset: 16,
+                    shader_location: 1,
+                },
+                // glyph_offset, cmd_texel_count
+                wgpu::VertexAttribute {
+                    format: VertexFormat::Uint32x2,
+                    offset: 32,
+                    shader_location: 2,
+                },
+                // depth, ppem
+                wgpu::VertexAttribute {
+                    format: VertexFormat::Float32x2,
+                    offset: 40,
+                    shader_location: 3,
+                },
+            ],
+        };
 
         // Bind group 0: unified glyph storage buffer
         let atlas_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("sluggrs atlas bind group layout"),
+            label: Some("sluggrs_skylines atlas bind group layout"),
             entries: &[BindGroupLayoutEntry {
                 binding: 0,
                 // Requires wgpu::DownlevelFlags::VERTEX_STORAGE. Baseline
@@ -94,7 +123,7 @@ impl Cache {
 
         // Bind group 1: screen resolution uniform
         let uniforms_layout = device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-            label: Some("sluggrs uniforms bind group layout"),
+            label: Some("sluggrs_skylines uniforms bind group layout"),
             entries: &[BindGroupLayoutEntry {
                 binding: 0,
                 visibility: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
@@ -109,7 +138,7 @@ impl Cache {
 
         // Shader layout: group 0 = params uniform, group 1 = textures
         let pipeline_layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
-            label: Some("sluggrs pipeline layout"),
+            label: Some("sluggrs_skylines pipeline layout"),
             bind_group_layouts: &[Some(&uniforms_layout), Some(&atlas_layout)],
             immediate_size: 0,
         });
@@ -120,7 +149,24 @@ impl Cache {
             atlas_layout,
             uniforms_layout,
             pipeline_layout,
-            pipelines: Mutex::new(Vec::new())
+            pipelines: Mutex::new(Vec::new()),
+            border: Mutex::new(Vec::new()),
+            mask: Mutex::new(None),
+            border_uniforms_layout: device.create_bind_group_layout(
+                &wgpu::BindGroupLayoutDescriptor {
+                    label: Some("sluggrs_skylines border uniforms bind group layout"),
+                    entries: &[BindGroupLayoutEntry {
+                        binding: 0,
+                        visibility: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
+                        ty: BindingType::Buffer {
+                            ty: BufferBindingType::Uniform,
+                            has_dynamic_offset: true,
+                            min_binding_size: NonZeroU64::new(32),
+                        },
+                        count: None,
+                    }],
+                },
+            ),
         }))
     }
 
@@ -130,7 +176,7 @@ impl Cache {
         buffer: &wgpu::Buffer,
     ) -> BindGroup {
         device.create_bind_group(&BindGroupDescriptor {
-            label: Some("sluggrs atlas bind group"),
+            label: Some("sluggrs_skylines atlas bind group"),
             layout: &self.0.atlas_layout,
             entries: &[BindGroupEntry {
                 binding: 0,
@@ -147,7 +193,7 @@ impl Cache {
 
     pub(crate) fn create_uniforms_bind_group(&self, device: &Device, buffer: &Buffer) -> BindGroup {
         device.create_bind_group(&BindGroupDescriptor {
-            label: Some("sluggrs uniforms bind group"),
+            label: Some("sluggrs_skylines uniforms bind group"),
             layout: &self.0.uniforms_layout,
             entries: &[BindGroupEntry {
                 binding: 0,
@@ -173,12 +219,13 @@ impl Cache {
 
         let mut cache = pipelines.lock().expect("Write pipeline cache");
 
-        cache.iter()
+        cache
+            .iter()
             .find(|(fmt, ms, ds, _)| fmt == &format && ms == &multisample && ds == &depth_stencil)
             .map(|(_, _, _, p)| p.clone())
             .unwrap_or_else(|| {
                 let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
-                    label: Some("sluggrs pipeline"),
+                    label: Some("sluggrs_skylines pipeline"),
                     layout: Some(pipeline_layout),
                     vertex: VertexState {
                         module: shader,
@@ -242,7 +289,7 @@ impl Cache {
         // bound under either pipeline.
         let border_uniforms_layout = &self.0.border_uniforms_layout;
         let layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
-            label: Some("sluggrs border pipeline layout"),
+            label: Some("sluggrs_skylines border pipeline layout"),
             bind_group_layouts: &[
                 Some(&self.0.uniforms_layout),
                 Some(&self.0.atlas_layout),
@@ -251,7 +298,7 @@ impl Cache {
             immediate_size: 0,
         });
         let shader = device.create_shader_module(ShaderModuleDescriptor {
-            label: Some("sluggrs border shader"),
+            label: Some("sluggrs_skylines border shader"),
             source: ShaderSource::Wgsl(std::borrow::Cow::Borrowed(crate::BORDER_SHADER_WGSL)),
         });
         // A fill-owning Ring keeps the caller's state verbatim; only an
@@ -268,7 +315,7 @@ impl Cache {
             state.stencil.write_mask = 0;
         }
         let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
-            label: Some("sluggrs border pipeline"),
+            label: Some("sluggrs_skylines border pipeline"),
             layout: Some(&layout),
             vertex: VertexState {
                 module: &shader,
@@ -325,7 +372,7 @@ impl Cache {
         }
         let mask_uniforms_layout =
             device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
-                label: Some("sluggrs mask uniforms bind group layout"),
+                label: Some("sluggrs_skylines mask uniforms bind group layout"),
                 entries: &[BindGroupLayoutEntry {
                     binding: 0,
                     visibility: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
@@ -338,7 +385,7 @@ impl Cache {
                 }],
             });
         let layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
-            label: Some("sluggrs mask pipeline layout"),
+            label: Some("sluggrs_skylines mask pipeline layout"),
             bind_group_layouts: &[
                 Some(&self.0.uniforms_layout),
                 Some(&self.0.atlas_layout),
@@ -347,11 +394,11 @@ impl Cache {
             immediate_size: 0,
         });
         let shader = device.create_shader_module(ShaderModuleDescriptor {
-            label: Some("sluggrs mask shader"),
+            label: Some("sluggrs_skylines mask shader"),
             source: ShaderSource::Wgsl(std::borrow::Cow::Borrowed(crate::BORDER_SHADER_WGSL)),
         });
         let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
-            label: Some("sluggrs mask pipeline"),
+            label: Some("sluggrs_skylines mask pipeline"),
             layout: Some(&layout),
             vertex: VertexState {
                 module: &shader,

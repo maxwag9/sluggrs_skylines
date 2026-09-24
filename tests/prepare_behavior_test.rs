@@ -7,7 +7,7 @@
 //!     cargo test --test prepare_behavior_test -- --ignored --nocapture
 
 use cosmic_text::{Attrs, Buffer, FontSystem, Metrics, Shaping};
-use sluggrs::{
+use sluggrs_skylines::{
     Cache, Color, ColorMode, Resolution, SwashCache, TextArea, TextAtlas, TextBounds,
     TextDecoration, TextRenderer, Viewport,
 };
@@ -87,7 +87,7 @@ impl TestHarness {
         &mut self,
         buffer: &Buffer,
         bounds: TextBounds,
-    ) -> Result<(), sluggrs::PrepareError> {
+    ) -> Result<(), sluggrs_skylines::PrepareError> {
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
@@ -105,6 +105,7 @@ impl TestHarness {
         self.renderer.prepare(
             &self.device,
             &self.queue,
+            &mut encoder,
             &mut self.font_system,
             &mut self.atlas,
             &self.viewport,
@@ -113,7 +114,7 @@ impl TestHarness {
     }
 
     /// Run prepare() with default (full-viewport) bounds.
-    fn prepare_text(&mut self, text: &str) -> Result<(), sluggrs::PrepareError> {
+    fn prepare_text(&mut self, text: &str) -> Result<(), sluggrs_skylines::PrepareError> {
         let buffer = self.make_buffer(text);
         self.prepare_with_bounds(
             &buffer,
@@ -131,7 +132,7 @@ impl TestHarness {
         &mut self,
         text: &str,
         metadata_to_depth: impl FnMut(usize) -> f32,
-    ) -> Result<(), sluggrs::PrepareError> {
+    ) -> Result<(), sluggrs_skylines::PrepareError> {
         let buffer = self.make_buffer(text);
         let mut encoder = self
             .device
@@ -155,6 +156,7 @@ impl TestHarness {
         self.renderer.prepare_with_depth(
             &self.device,
             &self.queue,
+            &mut encoder,
             &mut self.font_system,
             &mut self.atlas,
             &self.viewport,
@@ -235,7 +237,7 @@ fn prepare_with_depth_does_not_panic() {
 // Test 3: Clipping semantics - glyph outside bounds still prepared
 // ---------------------------------------------------------------------------
 
-/// sluggrs relies on scissor rect clipping at the GPU level, not per-glyph
+/// sluggrs_skylines relies on scissor rect clipping at the GPU level, not per-glyph
 /// cropping on the CPU. Glyphs that fall partially or fully outside the
 /// TextBounds are skipped during instance generation (the bounding-box
 /// check in prepare_with_depth), but this should never cause a panic or
@@ -263,7 +265,7 @@ fn clipping_bounds_do_not_cause_errors() {
 
     // Case 2: Bounds that exclude the text entirely (text starts at y=0
     // but bounds start far below).
-    // Note: sluggrs skips glyphs outside bounds via a bounding-box check,
+    // Note: sluggrs_skylines skips glyphs outside bounds via a bounding-box check,
     // so this should produce zero instances but still return Ok.
     let disjoint_bounds = TextBounds {
         left: 0,
@@ -286,7 +288,7 @@ fn clipping_bounds_do_not_cause_errors() {
 
     println!(
         "clipping_bounds_do_not_cause_errors: all bound configurations succeeded \
-         (sluggrs relies on scissor rect clipping, not per-glyph cropping)"
+         (sluggrs_skylines relies on scissor rect clipping, not per-glyph cropping)"
     );
 }
 
@@ -301,7 +303,7 @@ fn prepare_shared_buffer_frame(
     buffer: &Buffer,
     left_a: f32,
     left_b: f32,
-) -> Vec<sluggrs::GlyphInstance> {
+) -> Vec<sluggrs_skylines::GlyphInstance> {
     let mut encoder = h
         .device
         .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
@@ -323,6 +325,7 @@ fn prepare_shared_buffer_frame(
     h.renderer.prepare(
             &h.device,
             &h.queue,
+            &mut encoder,
             &mut h.font_system,
             &mut h.atlas,
             &h.viewport,
@@ -410,7 +413,7 @@ fn scrolled_content_reappears_after_cache_hit() {
     );
 }
 
-fn assert_instances_equal(actual: &[sluggrs::GlyphInstance], expected: &[sluggrs::GlyphInstance]) {
+fn assert_instances_equal(actual: &[sluggrs_skylines::GlyphInstance], expected: &[sluggrs_skylines::GlyphInstance]) {
     assert_eq!(actual.len(), expected.len());
     for (actual, expected) in actual.iter().zip(expected) {
         assert_eq!(actual.screen_rect, expected.screen_rect);
@@ -425,12 +428,12 @@ fn assert_instances_equal(actual: &[sluggrs::GlyphInstance], expected: &[sluggrs
 fn prepare_areas<'a>(
     h: &mut TestHarness,
     areas: impl IntoIterator<Item = TextArea<'a>>,
-) -> Vec<sluggrs::GlyphInstance> {
-    let encoder = h.device
-        .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+) -> Vec<sluggrs_skylines::GlyphInstance> {
+    let mut encoder = h.device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
     h.renderer.prepare(
             &h.device,
             &h.queue,
+            &mut encoder,
             &mut h.font_system,
             &mut h.atlas,
             &h.viewport,
@@ -471,7 +474,7 @@ fn shared_buffer_distinct_placements_become_direct_hits() {
     let first = prepare_areas(&mut h, [area(0.0), area(100.0)]);
     assert_eq!(
         h.renderer.last_prepare_stats(),
-        sluggrs::text_renderer::PrepareStats {
+        sluggrs_skylines::text_renderer::PrepareStats {
             direct_hits: 0,
             reculls: 0,
             misses: 2,
@@ -480,7 +483,7 @@ fn shared_buffer_distinct_placements_become_direct_hits() {
     let second = prepare_areas(&mut h, [area(0.0), area(100.0)]);
     assert_eq!(
         h.renderer.last_prepare_stats(),
-        sluggrs::text_renderer::PrepareStats {
+        sluggrs_skylines::text_renderer::PrepareStats {
             direct_hits: 2,
             reculls: 0,
             misses: 0,
@@ -489,7 +492,7 @@ fn shared_buffer_distinct_placements_become_direct_hits() {
     let third = prepare_areas(&mut h, [area(0.0), area(100.0)]);
     assert_eq!(
         h.renderer.last_prepare_stats(),
-        sluggrs::text_renderer::PrepareStats {
+        sluggrs_skylines::text_renderer::PrepareStats {
             direct_hits: 2,
             reculls: 0,
             misses: 0,
@@ -532,7 +535,7 @@ fn shared_buffer_order_swap_converges_after_recull() {
     prepare_areas(&mut h, [area(100.0), area(0.0)]);
     assert_eq!(
         h.renderer.last_prepare_stats(),
-        sluggrs::text_renderer::PrepareStats {
+        sluggrs_skylines::text_renderer::PrepareStats {
             direct_hits: 2,
             reculls: 0,
             misses: 0,
@@ -561,7 +564,7 @@ fn shared_buffer_shrink_grow_discards_stale_occurrences() {
     prepare_areas(&mut h, [area(0.0), area(100.0)]);
     assert_eq!(
         h.renderer.last_prepare_stats(),
-        sluggrs::text_renderer::PrepareStats {
+        sluggrs_skylines::text_renderer::PrepareStats {
             direct_hits: 1,
             reculls: 0,
             misses: 1,
@@ -574,8 +577,8 @@ fn shared_buffer_shrink_grow_discards_stale_occurrences() {
 /// whose addition order differs from a fresh build, so x compares with a
 /// rounding tolerance; everything else must be exact.
 fn assert_instances_shifted(
-    actual: &[sluggrs::GlyphInstance],
-    expected: &[sluggrs::GlyphInstance],
+    actual: &[sluggrs_skylines::GlyphInstance],
+    expected: &[sluggrs_skylines::GlyphInstance],
     dx: f32,
 ) {
     assert_eq!(actual.len(), expected.len());
@@ -596,7 +599,7 @@ fn assert_instances_shifted(
 /// assertions (e.g. that per-area colors actually differ).
 fn assert_validity_variants_become_direct_hits(
     mut make_areas: impl FnMut(&cosmic_text::Buffer) -> [TextArea<'_>; 2],
-) -> Vec<sluggrs::GlyphInstance> {
+) -> Vec<sluggrs_skylines::GlyphInstance> {
     let mut h = TestHarness::new();
     let mut buffer = h.make_buffer("AB");
     buffer.set_redraw(false);
@@ -604,7 +607,7 @@ fn assert_validity_variants_become_direct_hits(
     let second = prepare_areas(&mut h, make_areas(&buffer));
     assert_eq!(
         h.renderer.last_prepare_stats(),
-        sluggrs::text_renderer::PrepareStats {
+        sluggrs_skylines::text_renderer::PrepareStats {
             direct_hits: 2,
             reculls: 0,
             misses: 0,

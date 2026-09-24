@@ -452,7 +452,7 @@ index 61e1f14..799d2ff 100644
 +++ b/Cargo.toml
 @@ -1,6 +1,6 @@
  [package]
- name = "sluggrs"
+ name = "sluggrs_skylines"
 -version = "0.1.0"
 +version = "0.2.0"
  edition = "2024"
@@ -488,7 +488,7 @@ index b551595..05045a4 100644
 @@ -35,6 +35,7 @@ Work in progress. The core rendering pipeline is functional and tested in produc
  - Retained prepared-text cache - skips glyph loop and GPU upload for unchanged text
  - cryoglyph-compatible API (Cache, TextAtlas, TextRenderer, Viewport)
- - Wired into iced's `text.rs` via [forked iced](https://github.com/folknor/iced/tree/sluggrs)
+ - Wired into iced's `text.rs` via [forked iced](https://github.com/folknor/iced/tree/sluggrs_skylines)
 +- Supports text borders
  
  ## Performance
@@ -503,7 +503,7 @@ index de205a2..a56d1a4 100644
  
 -use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping, SwashCache};
 +use cosmic_text::{Attrs, Buffer, Color, Family, FontSystem, Metrics, Shaping, SwashCache};
- use sluggrs::{
+ use sluggrs_skylines::{
      Cache, ColorMode, Resolution, TextArea, TextAtlas, TextBounds, TextRenderer, Viewport,
  };
 @@ -139,7 +139,6 @@ fn prepare(
@@ -530,7 +530,7 @@ diff --git a/examples/demo.rs b/examples/demo.rs
 index d65f90a..d573f35 100644
 --- a/examples/demo.rs
 +++ b/examples/demo.rs
-@@ -6,6 +6,7 @@ use sluggrs::outline::{
+@@ -6,6 +6,7 @@ use sluggrs_skylines::outline::{
  };
  
  use std::sync::Arc;
@@ -579,7 +579,7 @@ diff --git a/examples/demo2.rs b/examples/demo2.rs
 index 7555f7e..06c47cb 100644
 --- a/examples/demo2.rs
 +++ b/examples/demo2.rs
-@@ -5,7 +5,7 @@ use sluggrs::{
+@@ -5,7 +5,7 @@ use sluggrs_skylines::{
      Cache, ColorMode, Resolution, TextArea, TextAtlas, TextBounds, TextRenderer, Viewport,
  };
  
@@ -668,7 +668,7 @@ index 92281ae..02ad208 100644
  
 -use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping, Weight};
 +use cosmic_text::{Attrs, Buffer, Color, Family, FontSystem, Metrics, Shaping, Weight};
- use sluggrs::{
+ use sluggrs_skylines::{
      Cache, ColorMode, Resolution, SwashCache, TextArea, TextAtlas, TextBounds, TextRenderer,
      Viewport,
 @@ -453,6 +453,8 @@ fn layout_text_areas(buffers: &[Buffer]) -> Vec<TextArea<'_>> {
@@ -693,7 +693,7 @@ index 92281ae..02ad208 100644
 @@ -569,19 +572,15 @@ impl RenderHarness {
      }
  
-     fn prepare_areas(&mut self, areas: &[TextArea]) -> Result<(), sluggrs::PrepareError> {
+     fn prepare_areas(&mut self, areas: &[TextArea]) -> Result<(), sluggrs_skylines::PrepareError> {
 -        let encoder = self
 -            .device
 -            .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
@@ -722,7 +722,7 @@ index 52f6d9c..7ec833d 100644
  
 -use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping, Weight};
 +use cosmic_text::{Attrs, Buffer, Color, Family, FontSystem, Metrics, Shaping, Weight};
- use sluggrs::{
+ use sluggrs_skylines::{
      Cache, ColorMode, Resolution, SwashCache, TextArea, TextAtlas, TextBounds, TextRenderer,
      Viewport,
 @@ -301,6 +301,8 @@ fn main() {
@@ -775,8 +775,8 @@ index d0f2fec..7ca64c4 100644
              column![
                  text("Hello 👋 World 🎉 Emoji Test 😀🦊🐕").size(32),
                  text("The quick brown fox 🦊 jumps over the lazy dog 🐕").size(24),
--                text("Sluggrs + Raster Fallback 🚀✨🎨").size(20),
-+                text("sluggrs + Raster Fallback 🚀✨🎨").size(20),
+-                text("sluggrs_skylines + Raster Fallback 🚀✨🎨").size(20),
++                text("sluggrs_skylines + Raster Fallback 🚀✨🎨").size(20),
                  text("Pure vector text: no emoji here").size(16),
                  text("Mixed: abc 🔥 def 💧 ghi ⚡ jkl").size(14),
              ]
@@ -790,7 +790,7 @@ index 40768b9..a17d024 100644
  
 -use cosmic_text::{Attrs, Buffer, FontSystem, Metrics, Shaping};
 +use cosmic_text::{Attrs, Buffer, Color, FontSystem, Metrics, Shaping};
- use sluggrs::{
+ use sluggrs_skylines::{
      Cache, ColorMode, Resolution, SwashCache, TextArea, TextAtlas, TextBounds, TextRenderer,
      Viewport,
 @@ -26,6 +26,7 @@ fn main() {
@@ -845,7 +845,7 @@ index 26e468a..eaccf72 100644
  
 -use cosmic_text::{Attrs, Buffer, FontSystem, Metrics, Shaping};
 +use cosmic_text::{Attrs, Buffer, Color, FontSystem, Metrics, Shaping, SwashCache};
- use sluggrs::{
+ use sluggrs_skylines::{
 -    Cache, ColorMode, Resolution, SwashCache, TextArea, TextAtlas, TextBounds, TextRenderer,
 +    Cache, ColorMode, Resolution, TextArea, TextAtlas, TextBounds, TextRenderer,
      Viewport,
@@ -2307,7 +2307,7 @@ index c0a9a89..1340c5f 100644
  
 -use cosmic_text::{Attrs, Buffer, FontSystem, Metrics, Shaping};
 +use cosmic_text::{Attrs, Buffer, Color, FontSystem, Metrics, Shaping};
- use sluggrs::{
+ use sluggrs_skylines::{
      Cache, ColorMode, RenderError, Resolution, SwashCache, TextArea, TextAtlas, TextBounds,
      TextRenderer, Viewport,
 @@ -22,6 +22,7 @@ fn create_test_device() -> (wgpu::Device, wgpu::Queue) {
@@ -2368,7 +2368,7 @@ index 421a6b7..374e0bb 100644
  #![allow(dead_code)]
  
 +use std::fmt::format;
- use sluggrs::GlyphInstance;
+ use sluggrs_skylines::GlyphInstance;
  use wgpu::util::DeviceExt;
  
 @@ -18,6 +19,7 @@ pub fn create_test_device() -> (wgpu::Device, wgpu::Queue) {
@@ -2717,7 +2717,7 @@ index 371f24d..1d539fc 100644
 +    buffer: &Buffer,
      left_a: f32,
      left_b: f32,
- ) -> Vec<sluggrs::GlyphInstance> {
+ ) -> Vec<sluggrs_skylines::GlyphInstance> {
 @@ -319,17 +320,16 @@ fn prepare_shared_buffer_frame(
          scale: 1.0,
          bounds,
@@ -2743,7 +2743,7 @@ index 371f24d..1d539fc 100644
 @@ -429,19 +429,15 @@ fn prepare_areas<'a>(
      h: &mut TestHarness,
      areas: impl IntoIterator<Item = TextArea<'a>>,
- ) -> Vec<sluggrs::GlyphInstance> {
+ ) -> Vec<sluggrs_skylines::GlyphInstance> {
 -    let encoder = h
 -        .device
 +    let encoder = h.device

@@ -194,9 +194,9 @@ impl RasterState {
                             offset: 48,
                             shader_location: 5,
                         },
-                    ],
+                    ]
                 })],
-                compilation_options: wgpu::PipelineCompilationOptions::default(),
+                compilation_options: wgpu::PipelineCompilationOptions::default()
             },
             fragment: Some(wgpu::FragmentState {
                 module: &shader,
@@ -215,7 +215,7 @@ impl RasterState {
             depth_stencil,
             multisample,
             multiview_mask: None,
-            cache: None,
+            cache: None
         });
 
         let atlas_texture = create_atlas_texture(device, INITIAL_ATLAS_SIZE);

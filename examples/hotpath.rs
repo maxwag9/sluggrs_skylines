@@ -5,13 +5,13 @@
 //! through the public TextRenderer::prepare API. The hotpath guard captures
 //! per-function timing/allocation data and writes it on exit.
 //!
-//! Run via brokkr:  brokkr sluggrs hotpath [--alloc]
+//! Run via brokkr:  brokkr sluggrs_skylines hotpath [--alloc]
 //! Run standalone:  cargo run --release --example hotpath --features hotpath
 
 use std::time::Instant;
 
 use cosmic_text::{Attrs, Buffer, Color, FontSystem, Metrics, Shaping, SwashCache};
-use sluggrs::{
+use sluggrs_skylines::{
     Cache, ColorMode, Resolution, TextArea, TextAtlas, TextBounds, TextRenderer,
     Viewport,
 };
@@ -26,7 +26,7 @@ use sluggrs::{
 static ALLOC: hotpath::CountingAllocator = hotpath::CountingAllocator::new();
 
 fn main() {
-    let _guard = hotpath::HotpathGuardBuilder::new("sluggrs::hotpath")
+    let _guard = hotpath::HotpathGuardBuilder::new("sluggrs_skylines::hotpath")
         .percentiles(&[50.0, 95.0, 99.0])
         .functions_limit(0)
         .build();
@@ -141,7 +141,7 @@ fn create_device() -> (wgpu::Device, wgpu::Queue) {
     }
 
     pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-        label: Some("sluggrs hotpath"),
+        label: Some("sluggrs_skylines hotpath"),
         required_features: features,
         ..Default::default()
     }))
@@ -280,7 +280,7 @@ impl RenderHarness {
         None
     }
 
-    fn prepare_text(&mut self, text: &str) -> Result<(), sluggrs::PrepareError> {
+    fn prepare_text(&mut self, text: &str) -> Result<(), sluggrs_skylines::PrepareError> {
         let metrics = Metrics::new(16.0, 20.0);
         let mut buffer = Buffer::new(&mut self.font_system, metrics);
         buffer.set_text(text, &Attrs::new(), Shaping::Advanced, None);
@@ -308,6 +308,7 @@ impl RenderHarness {
         self.renderer.prepare(
             &self.device,
             &self.queue,
+            &mut encoder,
             &mut self.font_system,
             &mut self.atlas,
             &self.viewport,

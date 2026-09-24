@@ -22,7 +22,7 @@ impl Viewport {
         };
 
         let params_buffer = device.create_buffer(&BufferDescriptor {
-            label: Some("sluggrs params"),
+            label: Some("sluggrs_skylines params"),
             size: mem::size_of::<Params>() as u64,
             usage: BufferUsages::UNIFORM | BufferUsages::COPY_DST,
             mapped_at_creation: false,

@@ -6,13 +6,13 @@
 //! Exercises cold/warm/scroll prepare paths and GPU rendering at realistic
 //! glyph counts (~15k instances, ~300 distinct glyphs).
 //!
-//! Run via brokkr:  brokkr sluggrs hotpath  (once wired)
+//! Run via brokkr:  brokkr sluggrs_skylines hotpath  (once wired)
 //! Run standalone:  cargo run --release --example email-bench --features hotpath
 
 use std::time::Instant;
 
 use cosmic_text::{Attrs, Buffer, Color, Family, FontSystem, Metrics, Shaping, Weight};
-use sluggrs::{
+use sluggrs_skylines::{
     Cache, ColorMode, Resolution, SwashCache, TextArea, TextAtlas, TextBounds, TextRenderer,
     Viewport,
 };
@@ -82,11 +82,11 @@ const EMAILS: &[EmailMessage] = &[
         metadata: "From: Søren Andersen <soren@example.com>  To: team@example.com\n\
                    Date: 2026-04-02 11:05 UTC",
         body: "Team,\n\n\
-               Quick update on the iced integration timeline. The sluggrs branch on folknor/iced \
+               Quick update on the iced integration timeline. The sluggrs_skylines branch on folknor/iced \
                has text.rs swapped from cryoglyph and passes basic rendering tests. Remaining \
                work before we can submit upstream:\n\n\
                1. Emoji/non-vector glyph fallback - currently silently dropped, needs explicit \
-                  classification API for two-pass routing (sluggrs → cryoglyph)\n\
+                  classification API for two-pass routing (sluggrs_skylines → cryoglyph)\n\
                2. trim() invalidation bug - prepare→trim→render sequence can draw stale data\n\
                3. ColorMode actually needs to work - sRGB vs linear framebuffer handling\n\
                4. GlyphInstance stride alignment - 96 bytes with 8 bytes padding, verify on \
@@ -226,7 +226,7 @@ const EMAILS: &[EmailMessage] = &[
 // -- Main --------------------------------------------------------------------
 
 fn main() {
-    let _guard = hotpath::HotpathGuardBuilder::new("sluggrs::email_bench")
+    let _guard = hotpath::HotpathGuardBuilder::new("sluggrs_skylines::email_bench")
         .percentiles(&[50.0, 95.0, 99.0])
         .functions_limit(0)
         .build();
@@ -486,7 +486,7 @@ fn create_device() -> (wgpu::Device, wgpu::Queue) {
     }
 
     pollster::block_on(adapter.request_device(&wgpu::DeviceDescriptor {
-        label: Some("sluggrs email-bench"),
+        label: Some("sluggrs_skylines email-bench"),
         required_features: features,
         ..Default::default()
     }))
@@ -569,7 +569,7 @@ impl RenderHarness {
         }
     }
 
-    fn prepare_areas(&mut self, areas: &[TextArea]) -> Result<(), sluggrs::PrepareError> {
+    fn prepare_areas(&mut self, areas: &[TextArea]) -> Result<(), sluggrs_skylines::PrepareError> {
         let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
@@ -577,6 +577,7 @@ impl RenderHarness {
         self.renderer.prepare(
             &self.device,
             &self.queue,
+            &mut encoder,
             &mut self.font_system,
             &mut self.atlas,
             &self.viewport,
