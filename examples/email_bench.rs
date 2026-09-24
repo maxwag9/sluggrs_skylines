@@ -301,8 +301,7 @@ fn main() {
                     scale: area.scale,
                     bounds: area.bounds,
                     default_color: area.default_color,
-                    border_color: Color::rgb(0, 10, 0),
-                    border_width: 2.0
+                    decorations: &[],
                 }
             })
             .collect();
@@ -455,8 +454,7 @@ fn layout_text_areas(buffers: &[Buffer]) -> Vec<TextArea<'_>> {
                     bottom: HEIGHT as i32,
                 },
                 default_color: cosmic_text::Color::rgb(230, 230, 230),
-                border_color: Color::rgb(0, 10, 0),
-                border_width: 2.0
+                decorations: &[],
             };
             top += height + gap;
             area
@@ -572,7 +570,7 @@ impl RenderHarness {
     }
 
     fn prepare_areas(&mut self, areas: &[TextArea]) -> Result<(), sluggrs::PrepareError> {
-        let encoder = self
+        let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 

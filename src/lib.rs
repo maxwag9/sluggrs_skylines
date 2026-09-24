@@ -15,6 +15,8 @@ pub mod viewport;
 // may change.
 pub mod band;
 pub(crate) mod blob_cache;
+pub(crate) mod blur;
+pub mod border;
 pub mod glyph_cache;
 pub mod outline;
 pub mod prep;
@@ -28,7 +30,10 @@ pub use glyph_cache::GlyphKey;
 pub use gpu_cache::Cache;
 pub use text_atlas::TextAtlas;
 pub use text_renderer::TextRenderer;
-pub use types::{ColorMode, PrepareError, RenderError, Resolution, TextArea, TextBounds};
+pub use types::{
+    ColorMode, DecorationError, DecorationMode, PrepareError, RenderError, Resolution, TextArea,
+    TextBounds, TextDecoration, validate_decorations,
+};
 pub use viewport::Viewport;
 
 // Re-export cosmic_text types that iced's text.rs uses via cryoglyph
@@ -37,6 +42,16 @@ use wgpu::VertexFormat;
 
 // Shader sources
 pub const SIMPLE_SHADER_WGSL: &str = include_str!("simple_shader.wgsl");
+/// Normal shader assembled from its source fragments. Kept separate from the
+/// border module so the normal GPU path remains byte-for-byte stable.
+pub const ASSEMBLED_SIMPLE_SHADER_WGSL: &str = concat!(include_str!("simple_shader.wgsl"));
+pub(crate) const BLUR_SHADER_WGSL: &str = include_str!("blur_shader.wgsl");
+pub(crate) const SHADOW_SHADER_WGSL: &str = include_str!("shadow_shader.wgsl");
+pub(crate) const BORDER_SHADER_WGSL: &str = concat!(
+    include_str!("simple_shader.wgsl"),
+    "\n",
+    include_str!("border_shader.wgsl")
+);
 // Full shader (with dilation) is not yet synced with simple_shader fixes.
 // Kept internal until it's brought up to parity.
 const _SHADER_WGSL: &str = include_str!("shader.wgsl");

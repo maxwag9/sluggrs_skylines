@@ -37,6 +37,32 @@ struct Inner {
             RenderPipeline,
         )>,
     >,
+    #[allow(clippy::type_complexity)]
+    border: Mutex<
+        Vec<(
+            TextureFormat,
+            MultisampleState,
+            Option<DepthStencilState>,
+            // Whether this variant's fragment supplies the fill (a Ring) or
+            // only an underlay. They need different depth/stencil state.
+            bool,
+            BorderPipelineState,
+        )>,
+    >,
+    /// The mask pipeline has one fixed target format, so it needs no key.
+    mask: Mutex<Option<BorderPipelineState>>,
+    /// The decoration uniform's layout, created once and shared by every
+    /// border-shader pipeline variant. One bind group is built from it and
+    /// bound under both the underlay and the fill-owning pipeline, so they
+    /// must be the SAME layout rather than two structurally identical ones
+    /// that happen to be interned as equivalent.
+    border_uniforms_layout: BindGroupLayout,
+}
+
+#[derive(Debug, Clone)]
+pub(crate) struct BorderPipelineState {
+    pub pipeline: RenderPipeline,
+    pub uniforms_layout: BindGroupLayout,
 }
 
 impl Cache {
@@ -183,6 +209,181 @@ impl Cache {
                 cache.push((format, multisample, depth_stencil, pipeline.clone()));
                 pipeline
             })
+    }
+
+    /// The border-shader pipeline.
+    ///
+    /// `fill_owning` selects between the two roles this shader has, which need
+    /// DIFFERENT depth and stencil behaviour and therefore cannot share one
+    /// pipeline:
+    ///
+    /// - `false` - an analytic underlay drawn beneath a fill that some other
+    ///   draw will supply. Depth-tested, but writes neither depth nor stencil,
+    ///   because the fill above it is what owns those.
+    /// - `true` - a Ring, whose fragment emits the fill itself. It must keep
+    ///   the caller's original state unchanged, or a glyph's fill would stop
+    ///   writing depth and stencil purely because it was decorated, while the
+    ///   COLR glyphs beside it still did.
+    pub(crate) fn get_or_create_border_pipeline(
+        &self,
+        device: &Device,
+        format: TextureFormat,
+        multisample: MultisampleState,
+        depth_stencil: Option<DepthStencilState>,
+        fill_owning: bool,
+    ) -> BorderPipelineState {
+        let mut cached = self.0.border.lock().expect("Write border pipeline cache");
+        if let Some((_, _, _, _, state)) = cached.iter().find(|(fmt, ms, ds, owning, _)| {
+            fmt == &format && ms == &multisample && ds == &depth_stencil && *owning == fill_owning
+        }) {
+            return state.clone();
+        }
+        // Shared across both variants: one bind group is built from this and
+        // bound under either pipeline.
+        let border_uniforms_layout = &self.0.border_uniforms_layout;
+        let layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
+            label: Some("sluggrs border pipeline layout"),
+            bind_group_layouts: &[
+                Some(&self.0.uniforms_layout),
+                Some(&self.0.atlas_layout),
+                Some(border_uniforms_layout),
+            ],
+            immediate_size: 0,
+        });
+        let shader = device.create_shader_module(ShaderModuleDescriptor {
+            label: Some("sluggrs border shader"),
+            source: ShaderSource::Wgsl(std::borrow::Cow::Borrowed(crate::BORDER_SHADER_WGSL)),
+        });
+        // A fill-owning Ring keeps the caller's state verbatim; only an
+        // underlay strips writes.
+        let mut underlay_depth = depth_stencil.clone();
+        if let Some(state) = underlay_depth.as_mut().filter(|_| !fill_owning) {
+            state.depth_write_enabled = Some(false);
+            state.stencil.front.fail_op = wgpu::StencilOperation::Keep;
+            state.stencil.front.depth_fail_op = wgpu::StencilOperation::Keep;
+            state.stencil.front.pass_op = wgpu::StencilOperation::Keep;
+            state.stencil.back.fail_op = wgpu::StencilOperation::Keep;
+            state.stencil.back.depth_fail_op = wgpu::StencilOperation::Keep;
+            state.stencil.back.pass_op = wgpu::StencilOperation::Keep;
+            state.stencil.write_mask = 0;
+        }
+        let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
+            label: Some("sluggrs border pipeline"),
+            layout: Some(&layout),
+            vertex: VertexState {
+                module: &shader,
+                entry_point: Some("vs_border"),
+                buffers: &self.0.vertex_buffers,
+                compilation_options: PipelineCompilationOptions::default(),
+            },
+            fragment: Some(FragmentState {
+                module: &shader,
+                entry_point: Some("fs_border"),
+                targets: &[Some(ColorTargetState {
+                    format,
+                    blend: Some(BlendState::PREMULTIPLIED_ALPHA_BLENDING),
+                    write_mask: ColorWrites::default(),
+                })],
+                compilation_options: PipelineCompilationOptions::default(),
+            }),
+            primitive: PrimitiveState {
+                topology: PrimitiveTopology::TriangleStrip,
+                ..PrimitiveState::default()
+            },
+            depth_stencil: underlay_depth,
+            multisample,
+            multiview_mask: None,
+            cache: None,
+        });
+        let state = BorderPipelineState {
+            pipeline,
+            uniforms_layout: border_uniforms_layout.clone(),
+        };
+        cached.push((
+            format,
+            multisample,
+            depth_stencil,
+            fill_owning,
+            state.clone(),
+        ));
+        state
+    }
+}
+
+impl Cache {
+    /// Pipeline that renders glyph coverage into a filtered shadow's source
+    /// mask: the border vertex shader with a coverage-only fragment, drawn
+    /// into a single-channel linear target.
+    ///
+    /// Blending is source-over union rather than additive, so glyphs that
+    /// overlap do not push coverage past 1.0 and show as a bright core once
+    /// blurred.
+    pub(crate) fn get_or_create_mask_pipeline(&self, device: &Device) -> BorderPipelineState {
+        let mut cached = self.0.mask.lock().expect("Write mask pipeline cache");
+        if let Some(state) = cached.as_ref() {
+            return state.clone();
+        }
+        let mask_uniforms_layout =
+            device.create_bind_group_layout(&wgpu::BindGroupLayoutDescriptor {
+                label: Some("sluggrs mask uniforms bind group layout"),
+                entries: &[BindGroupLayoutEntry {
+                    binding: 0,
+                    visibility: ShaderStages::VERTEX | ShaderStages::FRAGMENT,
+                    ty: BindingType::Buffer {
+                        ty: BufferBindingType::Uniform,
+                        has_dynamic_offset: true,
+                        min_binding_size: NonZeroU64::new(32),
+                    },
+                    count: None,
+                }],
+            });
+        let layout = device.create_pipeline_layout(&PipelineLayoutDescriptor {
+            label: Some("sluggrs mask pipeline layout"),
+            bind_group_layouts: &[
+                Some(&self.0.uniforms_layout),
+                Some(&self.0.atlas_layout),
+                Some(&mask_uniforms_layout),
+            ],
+            immediate_size: 0,
+        });
+        let shader = device.create_shader_module(ShaderModuleDescriptor {
+            label: Some("sluggrs mask shader"),
+            source: ShaderSource::Wgsl(std::borrow::Cow::Borrowed(crate::BORDER_SHADER_WGSL)),
+        });
+        let pipeline = device.create_render_pipeline(&RenderPipelineDescriptor {
+            label: Some("sluggrs mask pipeline"),
+            layout: Some(&layout),
+            vertex: VertexState {
+                module: &shader,
+                entry_point: Some("vs_border"),
+                buffers: &self.0.vertex_buffers,
+                compilation_options: PipelineCompilationOptions::default(),
+            },
+            fragment: Some(FragmentState {
+                module: &shader,
+                entry_point: Some("fs_mask"),
+                targets: &[Some(ColorTargetState {
+                    format: crate::blur::MASK_FORMAT,
+                    blend: Some(crate::blur::mask_blend()),
+                    write_mask: ColorWrites::RED,
+                })],
+                compilation_options: PipelineCompilationOptions::default(),
+            }),
+            primitive: PrimitiveState {
+                topology: PrimitiveTopology::TriangleStrip,
+                ..PrimitiveState::default()
+            },
+            depth_stencil: None,
+            multisample: MultisampleState::default(),
+            multiview_mask: None,
+            cache: None,
+        });
+        let state = BorderPipelineState {
+            pipeline,
+            uniforms_layout: mask_uniforms_layout,
+        };
+        *cached = Some(state.clone());
+        state
     }
 }
 

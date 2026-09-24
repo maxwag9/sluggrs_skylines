@@ -1,264 +1,374 @@
 # WORK
 
-Architecture: consolidate glyph resolution inside TextAtlas and verify
-renderer/atlas pairing at render time. Two TODO items in one loop:
+Generalize text borders into ordered text decorations: outline-only
+(hollow) text, hard offset shadows, and blurred shadows.
 
-1. "TextRenderer/TextAtlas coupling" - the renderer reaches into the
-   atlas via pub(crate) fields and methods; policy, cache state, and
-   upload orchestration are spread across both files.
-2. "API doesn't encode TextRenderer-TextAtlas lifetime" - render()
-   accepts any &TextAtlas but the instance buffer was prepared against
-   a specific atlas's offsets; mispairing is type-correct but renders
-   garbage.
+## Status
 
-## Problem detail (verified earlier this session)
+- DONE: the blob-capacity prerequisite (font-unit capacities, aggregated
+  independently, resolved once per key, lookup-only emission).
+- DONE: the decoration list and hard offset shadows. `TextArea` carries
+  `decorations: &[TextDecoration { color, spread, offset }]`; all of an
+  area's decorations share one instance range with a per-draw uniform;
+  order is back-to-front like CSS; culling uses directional extents.
+- DONE: outline-only (hollow) text. `DecorationMode::Ring` emits the
+  ring and the fill from one fragment as a disjoint partition, with the
+  covered glyphs withheld from the normal pipeline and draw runs that
+  preserve mono/COLR order.
+- DONE: blurred shadows. `TextDecoration::blur` above zero routes the
+  decoration through a mask render, a separable Gaussian, and a tinted
+  composite. `prepare` now takes `&mut CommandEncoder` and CALLERS MUST
+  SUBMIT IT - preparing into one encoder and rendering into another
+  silently drops every blur pass.
+- TODO: `repos/iced` constructs `TextArea` without the decorations field
+  and has not compiled against sluggrs HEAD since the border feature
+  landed. It needs `decorations: &[]`.
 
-`src/text_renderer.rs` currently:
+Do NOT run cargo or brokkr; the orchestrator runs all builds, tests, and
+formatting. Read and write code only. Do not commit. Do not touch
+`repos/`, `.review.toml`, or markdown files other than this one.
 
-- reads/writes `atlas.glyphs` directly (get_and_mark_used in pass 1,
-  get in pass 3, insert_and_mark_used in resolve_glyph_miss),
-- reads `atlas.color_glyphs` / `atlas.color_v1_glyphs` in pass 3 and
-  inserts into them in the resolve path,
-- drives the whole cold-glyph pipeline itself (`resolve_glyph_miss`,
-  `upload_colr_v0_layers`): restore_cached_glyph, font lookup +
-  FontRef parse (its own `font_cache`), extract_outline/COLR checks,
-  prepare_mono with its own `prep_scratch`, then atlas.commit_mono /
-  upload_color_v1 / commit_color_v0,
-- uses `atlas.bind_group` in render(), plus flush_uploads,
-  rasterize_glyphs, render_raster_pass, generation(),
-  get_or_create_pipeline, init_raster.
+## Background
 
-`src/text_atlas.rs` exposes pub(crate) fields: cache, glyph_buffer,
-bind_group, format, glyphs, color_glyphs, color_v1_glyphs.
+`TextArea` currently carries `Option<TextBorder { color, width }>`. The
+border is drawn as a solid dilated underlay of each eligible monochrome
+vector glyph, in border color, before that area's fills; see the shipped
+design notes in git history for the blob and certification details.
 
-Pairing: `TextRenderer::new(atlas, ...)` bakes the pipeline from that
-atlas's Cache+format; `prepare*(atlas)` builds instances referencing
-that atlas's buffer offsets; `render(atlas)` binds whatever atlas it
-is handed. The only guard is the generation counter, and two distinct
-atlases both start at generation 0, so cross-atlas mispairing passes
-the check and renders garbage. types.rs also carries a stale doc
-comment claiming render() never returns errors (the generation guard
-has returned RemovedFromAtlas for a while) - fix it in this loop.
+We are adding the three text-decoration features CSS authors actually
+use, in this order:
 
-## Benchmark verdict (plantasjen, same-host, vs stored b7f0ca9 results)
+1. Outline-only (hollow) text: a fill that does not paint, so only the
+   outline shows. The CSS `-webkit-text-fill-color` effect.
+2. Hard offset shadow: color plus `dx`/`dy`, no blur.
+3. Blurred shadow: the real CSS `text-shadow`.
 
-Perf-neutral as required, using stored baselines only (no worktree
-reruns): email2 15.102 ms vs 14.987 ms 5-run baseline (+0.8%), render
-29.869 ms vs 30.745 ms (-2.8%), shared_buffer 1.322 ms vs 1.478 ms
-(-10.6% on a 1.5 ms target - noise, right direction). The one
-per-frame addition is a u64 compare in render() and the assert in
-prepare().
+Deps stay pinned (wgpu 29, skrifa 0.40, cosmic-text 0.19). Pre-1.0:
+breaking the public surface, including the iced-facing `prepare`
+signature, is acceptable where it is the right shape.
 
-## Implementation summary
+## Prerequisite bug: border blob capacity aggregation
 
-Shipped per the agreed plan. The resumed deep session verified the
-seam list is exact (no extra atlas reaches), all seven fields and
-four resolution helpers private, source-level behavior preserved
-across every resolution path (error routing, NON_VECTOR fallbacks,
-font-cache population, COLR v0/v1, fake italic, weight variation),
-and both pairing checks placed correctly. It found no production
-defects; two low test-quality findings were fixed by the
-orchestrator:
+`text_renderer.rs` builds `border_requirements: FxHashMap<GlyphKey,
+(f32, f32)>` by maximizing ppem and pixel radius INDEPENDENTLY and then
+resolving that pair. `text_atlas::resolve_border_blob` derives
+`required_units = wanted_bucket * units_per_em / ppem`, so pairing the
+maximum ppem with the maximum pixel radius yields the SMALLEST unit
+radius. A glyph appearing in one frame at two bordered sizes therefore
+gets a pre-pass blob that is under-provisioned for the smaller size.
 
-- The cross-atlas render test now uses bundled InterVariable and
-  asserts at least one prepared vector instance (it could previously
-  pass with zero instances on a font-less host).
-- The prepare-pairing test now checks the panic message and proves
-  recovery: after the rejected prepare, preparing with the
-  constructor atlas succeeds and emits instances (pinning the
-  "assert before any state mutation" property).
+Emission then calls `resolve_border_glyph` again per instance at that
+instance's real ppem, the `grid_radius_units` check fails, and the blob
+is rebuilt - the same-frame supersession the pre-pass comment says it
+exists to prevent.
 
-Validation: 82 unit + 25 GPU tests pass; all four snapshots 0.0%
-(emoji-colr exercises mono + COLRv0 + COLRv1 through the moved
-resolution path). Resolves both arch TODO items.
+Consequence, stated precisely: each emitted instance still receives a
+descriptor that satisfied its own request at emission time, and replaced
+blobs stay resident in retained texels, so no undersized grid is ever
+sampled and outlines do not truncate. The damage is repeated
+preparation, duplicate atlas storage, rebuilds recurring every frame,
+and premature `AtlasFull`.
 
-## Agreed plan (implemented exactly as written)
+Fix, and do this FIRST because the decoration work builds on it:
 
-1. **Atlas identity.** `TextAtlas` gets a `u64` id from a static
-   `AtomicU64` (relaxed ordering), assigned only in
-   `with_initial_buffer_capacity()`. pub(crate) `id()` accessor. The
-   id is instance identity and survives compaction (generation covers
-   layout changes).
+- Aggregate two independent capacities per `GlyphKey`: the maximum ppem
+  needed for boundary accuracy, and the maximum required radius IN FONT
+  UNITS for distance queries (fold the existing pixel-radius bucketing
+  into the unit-radius computation, or drop that redundant metadata
+  consistently).
+- Resolve once per key from those two independent capacities. The blob
+  builder must accept them independently instead of deriving both from
+  one `(ppem, radius_px)` pair.
+- Emission becomes lookup-only. Delete the per-instance re-resolution at
+  the three call sites.
+- One blob per key is sufficient: a boundary refined at the maximum ppem
+  is valid at every lower ppem, and a grid covering the maximum unit
+  radius covers every smaller query. Replacement is growth-only -
+  preserve existing capacities.
 
-2. **Move resolution into TextAtlas.** Move `CachedFont`,
-   `font_cache`, `prep_scratch`, `resolve_glyph_miss`,
-   `upload_colr_v0_layers`, and `band_count_for_curves` from
-   text_renderer.rs into text_atlas.rs. Rename the entry point to
-   `resolve_glyph(&mut self, font_system, key) -> Result<GlyphEntry,
-   PrepareError>`. Make it defensively check the resident glyph map
-   first, then blob restoration, then extraction+commit - correct
-   independent of the pass-1 precondition, no warm-frame cost (misses
-   only). After the move, make `restore_cached_glyph`, `commit_mono`,
-   `upload_color_v1`, and `commit_color_v0` PRIVATE.
+## Agreed design
 
-3. **Narrow seam + privacy.** Add pub(crate) accessors:
-   `glyph_mark_used(&mut self, &GlyphKey) -> Option<GlyphEntry>`,
-   `glyph(&self, &GlyphKey) -> Option<GlyphEntry>`,
-   `color_glyph(&self, &GlyphKey) -> Option<&ColorGlyphEntry>`,
-   `color_v1_glyph(&self, &GlyphKey) -> Option<&ColorV1GlyphEntry>`,
-   `bind_group(&self) -> &BindGroup`. Then make all seven fields
-   (cache, glyph_buffer, bind_group, format, glyphs, color_glyphs,
-   color_v1_glyphs) private. Verified: no source outside
-   text_renderer.rs touches them; examples/tests use public methods
-   only. The complete post-move seam is: constructor id()/
-   get_or_create_pipeline()/init_raster(); prepare id()/generation()/
-   glyph_mark_used()/resolve_glyph()/glyph()/color_glyph()/
-   color_v1_glyph()/flush_uploads()/rasterize_glyphs(); render id()/
-   generation()/bind_group()/render_raster_pass(). Any other atlas
-   access remaining in text_renderer.rs is a plan violation.
+Settled by spar; do not relitigate the mechanism. Correctness gaps in
+the mechanism are still worth raising.
 
-4. **Pairing enforcement.** `TextRenderer` stores `atlas_id` from the
-   constructor atlas. At the very start of `prepare_with_depth()`
-   (before any state mutation): unconditional
-   `assert_eq!(atlas.id(), self.atlas_id, ...)` with a clear message -
-   this is a programmer invariant, `PrepareError` has no suitable
-   variant, and a debug-only check would let release builds populate
-   retained state from the wrong atlas (the retained cache validates
-   only generation, so a second atlas with the same glyph keys could
-   reuse wrong offsets silently). In `render()`: check id FIRST and
-   return `RenderError::RemovedFromAtlas` on mismatch, then the
-   existing generation check. Do NOT add an enum variant (public
-   non-#[non_exhaustive] enum; cryoglyph drop-in compatibility) and do
-   NOT use debug_assert in render.
+### Two execution kinds, not one primitive
 
-5. **types.rs.** Rewrite the stale RenderError doc comment (render()
-   does return RemovedFromAtlas: on identity mismatch and on atlas
-   generation change) and broaden the Display wording for
-   RemovedFromAtlas to "prepared atlas data is invalid or unavailable"
-   -style phrasing covering both cases.
+A signed-distance field supports morphological effects (dilation,
+erosion, rings) but NOT convolution. A Gaussian shadow is a convolution
+of the glyph mask; a falloff over nearest-boundary distance is a
+feathered dilation and differs visibly on real glyphs: counters in `e`,
+`a`, `8`, `@` haze shut under a true blur but not under an SDF; thin
+stems and small punctuation lose peak opacity under a true blur and do
+not under an SDF; energy accumulates in the concavities of `V`, `W`,
+`M`; and tightly kerned or overlapping glyphs blur as one combined mask
+rather than as independent per-glyph shadows. Substituting a
+Gaussian-shaped falloff `exp(-d^2/2s^2)` does not fix this - it is still
+a function of one nearest distance, not an integral over coverage.
 
-## Tests (tests/atlas_lifecycle_test.rs or a new pairing test file)
+So the decoration list holds two kinds of entry:
 
-There is currently NO test that calls render() after a generation
-change - atlas_lifecycle_test.rs:180 only compares generation values.
-Add real render-path tests (GPU, ignored, existing harness patterns):
+- **Analytic decorations** (solid dilation, hard offset shadow, ring),
+  which reuse the existing border blob and border pipeline.
+- **Filtered shadows** (blur), which are a mask-render plus separable
+  blur at AREA granularity.
 
-- Two atlases A and B from the same Cache/device/format (both
-  generation 0). Renderer constructed+prepared with A using
-  deterministic non-empty vector text; inside a valid render pass:
-  `render(B)` returns Err(RemovedFromAtlas); `render(A)` returns
-  Ok(()).
-- Constructor pairing: renderer `new(A)`, then `prepare(B)` panics
-  (use `std::panic::catch_unwind` or `#[should_panic]` as fits the
-  harness; the wgpu resources must not be poisoned - a dedicated
-  small test is fine).
-- Real generation test: prepare with A, force compaction (small
-  initial capacity constructor + disjoint glyph sets across trims, as
-  atlas_lifecycle_test already does) until generation changes, then
-  assert `render(A)` returns Err(RemovedFromAtlas) BEFORE
-  re-preparing, and Ok after re-preparing.
+### API shape (`types.rs`)
 
-Existing suites must pass unchanged: 82 unit + 22 GPU tests, four
-snapshots at 0.0% (pure refactor for correctly paired usage;
-emoji-colr exercises mono + COLRv0 + COLRv1 through the moved
-resolution path).
+`TextArea` carries an ordered decoration list replacing
+`Option<TextBorder>`. Analytic entries carry `{ color, offset: [f32; 2],
+spread: f32, mode: Solid | Ring }`; filtered entries carry
+`{ color, offset: [f32; 2], sigma: f32 }`.
 
-## Superseded proposal (for context only)
+- Today's border is `{ Solid, offset 0, spread: width }` and must render
+  unchanged.
+- Widths, offsets and sigma are LOGICAL pixels, multiplied by
+  `TextArea::scale` exactly once on the CPU, validated on the physical
+  result (non-finite, negative => that decoration is dropped).
+- **Order is back-to-front, matching CSS**: the FIRST entry in a CSS
+  `text-shadow` list paints on TOP of later ones. Define the list
+  explicitly so authors do not get the reverse of what they expect.
+- Negative `spread` (erosion) is NOT supported in this pass. Reject it
+  in validation rather than leaving it to the dilation formula, which
+  only handles positive growth and would need different quad
+  construction.
+- Fill color semantics must be stated explicitly: whether it overrides
+  per-glyph rich-text colors, only replaces `default_color`, recolors
+  `use_foreground` COLR layers, or applies to monochrome vector glyphs
+  only. A transparent fill cannot make a COLRv1 emoji hollow and the
+  ring path cannot decorate one.
 
-### A. Move glyph resolution into TextAtlas
+### Hollow text: one combined fragment, not two draws
 
-Move `resolve_glyph_miss` and `upload_colr_v0_layers` - together with
-the `font_cache: FxHashMap<(fontdb::ID, Weight), CachedFont>` and
-`prep_scratch: PrepScratch` fields they use - from TextRenderer into
-TextAtlas. Public-ish seam (pub(crate)):
+Ring coverage subtracted from outer coverage does NOT compose correctly
+under source-over. With `o` outer, `f` fill, ring `r = o - f`, drawn
+ring-then-fill, the composite alpha is `f + (o-f)(1-f) = o - f(o-f)`,
+which equals `o` only when `f = 0` or `f = o`. At an inner edge with
+`o = 1, f = 0.5` it gives `0.75`: a coverage deficit. Exactness in `f`
+moves the error, it does not remove it.
 
-    atlas.resolve_glyph(font_system, key) -> Result<GlyphEntry, PrepareError>
+A compensated two-draw form exists (underlay alpha
+`q = b(o-f)/(1-a*f)`, then fill at `a*f`) and is algebraically valid,
+but it makes the underlay depend on the specific fill that follows it,
+and the area-wide underlay phase lets another glyph's fill intervene.
+Rejected.
 
-The renderer's pass 2 becomes a loop over distinct misses calling
-that. Rationale: everything the resolve path touches (blob-cache
-restore, font tables, outline extraction policy, NON_VECTOR fallback
-routing, commit) is atlas policy and atlas state; the renderer only
-needs the resulting entry. This makes classification/eviction/fallback
-changes single-file. The "one scratch while serial, one per worker
-under future rayon" note moves along with prep_scratch.
+**Therefore**: ring and fill are emitted by ONE fragment that computes
+both contributions and returns the disjoint partition
 
-### B. Narrow the crate-internal surface
+```
+premultiplied rgb = fill_rgb * a*f + ring_rgb * b*(o-f)
+alpha             = a*f + b*(o-f)
+```
 
-Make `glyphs`, `color_glyphs`, `color_v1_glyphs`, `bind_group`,
-`cache`, `glyph_buffer`, `format` private to text_atlas.rs. Add the
-minimal pub(crate) accessors the renderer actually needs:
+and the ordinary fill draw OMITS those glyphs. This supports translucent
+fill rather than refusing it. Requirements:
 
-- pass 1: `glyph_mark_used(&mut self, key) -> Option<GlyphEntry>`
-  (wraps glyphs.get_and_mark_used)
-- pass 3: `glyph(&self, key) -> Option<GlyphEntry>`,
-  `color_glyph(&self, key) -> Option<&ColorGlyphEntry>`,
-  `color_v1_glyph(&self, key) -> Option<&ColorV1GlyphEntry>`
-- render: `bind_group(&self) -> &BindGroup`
+- The border module already concatenates the whole normal shader
+  (`lib.rs`), so `render_single` and the banding helpers are compiled in
+  and reachable - no shared-source refactor needed. What is missing is
+  that `vs_border` does not emit the fill-side varyings and `fs_border`
+  never calls the evaluator.
+- Matching the fill's coverage means matching its whole policy: the
+  extra sampling below 16 ppem and the brightness-dependent stem
+  darkening below 48 ppem, with fill color as an input.
+- There is a real coordinate mismatch to reproduce: `vs_main` divides
+  its half-pixel UV expansion by `max(screen_rect.zw, 1)` while
+  `vs_border` divides by the actual dimensions with a near-zero guard,
+  so sub-pixel glyph dimensions get different interpolated coordinates
+  and derivatives.
+- `f <= o` is NOT guaranteed at small spread with stem darkening. Apply
+  an explicit nesting rule `effective_outer = max(sdf_outer, f)`,
+  accepting that it can enlarge the effective outer edge.
+- For an OPAQUE fill the shipped solid underlay is already exactly
+  right; Ring is only required for zero-alpha or translucent fills.
+- A zero-alpha normal draw should be omitted rather than emitted, since
+  zero color output does not disable depth or stencil side effects.
 
-Existing pub(crate) methods (flush_uploads, rasterize_glyphs,
-render_raster_pass, init_raster, get_or_create_pipeline) stay. The
-public `glyph_map()` accessor stays (external tests use it).
+### Ring mode: the settled execution model
 
-### C. Runtime pairing verification
+Ring is a per-decoration mode alongside Solid. A Ring decoration's draw
+emits BOTH the ring and the fill for the mono glyphs it covers, as the
+disjoint partition above, and those glyphs are then omitted from the
+ordinary fill draw.
 
-- TextAtlas gets a unique instance id: `id: u64` from a static
-  `AtomicU64` counter, assigned in the constructor, surviving
-  compaction (compaction already bumps generation; the id is the
-  instance identity, not the layout identity). pub(crate) or
-  #[doc(hidden)] accessor.
-- TextRenderer records `prepared_atlas_id` alongside
-  `prepared_atlas_generation` in prepare_with_depth.
-- render() verifies id first, then generation. On id mismatch return
-  `RenderError::RemovedFromAtlas`? OPEN QUESTION below.
+Three API constraints, each because the execution model cannot render
+the alternative correctly. Reject at validation, do not silently
+tolerate:
 
-Public API signatures stay identical (cryoglyph drop-in; iced is out
-of scope). No behavior change for correctly paired usage.
+- **At most one Ring per area.** Two Rings would each emit the fill, and
+  the fill would composite twice.
+- **Ring requires `offset == [0, 0]`.** One fragment cannot emit a ring
+  at one screen position and a fill at another. Supporting an offset
+  Ring would need a quad covering the union of fill and ring support,
+  separate fill and ring coordinates (or undoing the offset in em
+  units), and derivatives that still match `vs_main`.
+- **Ring must be the topmost decoration**, i.e. first in the
+  back-to-front list. If a lower Ring owned the fill, a later Solid
+  decoration would paint over that fill.
 
-### D. types.rs doc fix
+**Ordering is by RUNS, not by category.** Partitioning an area into
+"all mono" then "all COLR" reorders glyphs, and that is observable:
+quads overlap through negative letter spacing, explicit glyph offsets,
+combining marks, fallback shaping, overhanging bounds, glyphs sharing
+coordinates, and simply through overlapping antialiasing fringes. It
+can also change depth/stencil results, since the normal pipeline
+inherits caller-provided depth/stencil state. So emit an
+order-preserving sequence of runs - COLR run, combined mono run, COLR
+run, ... - coalescing adjacent instances of the same execution kind.
+The cached instance list stays canonical and glyph-ordered; execution
+kind is metadata over it.
 
-Rewrite the stale RenderError doc comment: render() DOES return
-RemovedFromAtlas when the atlas generation (or now identity) does not
-match the prepared state.
+**Suppression must be by draw selection, not by paint.** A zero-alpha
+fill does not make the normal draw a no-op: the pipeline still performs
+caller depth writes and stencil operations on covered fragments. For a
+partially transparent fill, drawing twice gives `x + x(1-x)` rather than
+`x`, and even an opaque fill is doubled along its antialiased fringe
+where coverage is fractional. Discarding inside `fs_main` has the same
+depth/stencil hazard. Select the pipeline instead.
 
-## Open questions for review
+**Mode is draw topology, not geometry.** Solid -> Ring at equal spread
+and offset leaves the culling envelope, the distance-query radius, the
+boundary accuracy requirement and the border descriptor all unchanged,
+so it is not a geometry miss and forces no blob rebuild. But it is not
+paint either: it changes which pipeline supplies the fill, which normal
+instances are omitted, and which runs are emitted. Rebuild the ordered
+draw plan on a mode change; keep the cached instance list canonical so
+the two concepts do not get conflated.
 
-1. Do font_cache and prep_scratch belong in TextAtlas, or should a
-   third internal type (e.g. a GlyphResolver owned by the atlas) hold
-   them to keep TextAtlas from growing into a god object? Judge
-   against the file as it exists (it already owns the blob cache,
-   raster state, swash cache, and compaction).
-2. Mispair error semantics: reuse RemovedFromAtlas (no API change,
-   slightly wrong name) vs a new RenderError variant (additive public
-   enum change - check whether repos/iced's text.rs matches on
-   RenderError exhaustively before recommending it) vs debug_assert +
-   RemovedFromAtlas in release. Recommend one.
-3. Should prepare() also verify (or record-and-warn) that the passed
-   atlas matches the constructor-time pipeline source? The pipeline
-   depends only on Cache identity + format, so a strict check may be
-   too strong; a debug_assert on Arc::ptr_eq(cache) + format equality
-   may be right. Or skip constructor pairing entirely and only pin
-   prepare-vs-render. Recommend.
-4. Is there any remaining reach-in this plan misses? Enumerate every
-   `atlas.` access in text_renderer.rs against the proposed seam.
-5. Anything in examples/ or tests/ that relies on the fields going
-   private? (External crates can only see public items already, but
-   confirm nothing in src/ outside the two files uses them.)
-6. Test plan critique (below).
+**What the combined fragment must reproduce**, so its `f` equals what
+the normal pipeline would have produced for the same fragment. From
+`vs_main`: the fill glyph header via the descriptor's `fill_offset`,
+`em_rect`, `band_transform`, `band_max`, the fill data base
+(`fill_offset + GLYPH_HEADER_TEXELS`), instance color, stable instance
+ppem, and the same `em_size / max(screen_rect.zw, vec2(1.0))` mapping.
+From `fs_main`: `ems_per_pixel = max(fwidth(render_coord), 1/65536)`;
+mask `band_max.y` with `0x00FF`; `render_single` for the center sample;
+below 16 ppem the four diagonal samples at `d = ems_per_pixel / 3`
+averaged and blended by `smoothstep(16, 8, ppem)`; below 48 ppem
+`darken(coverage, brightness, ppem)` with brightness from the
+UNCONVERTED fill RGB; and the Web-mode `pow(rgb, 2.2)` conversion,
+which the ring paint needs too. All of it is reachable - the border
+module concatenates the whole normal shader.
 
-## Planned tests
+### Offset shadows
 
-- New GPU test (tests/prepare_behavior_test.rs or a new file): two
-  atlases, one renderer; prepare against atlas A, render into a pass
-  with atlas B; assert Err(...) instead of silent garbage; render with
-  A succeeds. Also cover: prepare(A), compact/trim A until generation
-  bumps... (existing generation test covers that; do not duplicate).
-- Existing suites must pass unchanged: 82 unit + 22 GPU tests, all
-  four snapshots at 0.0% (pure refactor, zero behavior change for
-  paired usage).
+- Offset MUST NOT enter the blob radius requirement. It translates the
+  quad; it does not change which glyph-space boundary is nearest. The
+  radius requirement stays `spread + AA support`.
+- `vs_border` currently dilates by exactly `width_px + 0.5`. The quad
+  dilation and texcoord expansion must use the decoration's COMPLETE
+  finite support or the fragment falloff is clipped at the quad edge.
+- Because border instances carry the same `screen_rect` as the fill and
+  dilate in the vertex shader, moving offset and dilation into the
+  per-draw uniform lets ALL analytic decorations of an area draw the
+  SAME instance range with only a uniform rebind. Do not duplicate the
+  instance stream per decoration.
 
-## Constraints
+### Blur: encoding phase
 
-- Do not run cargo or brokkr; the orchestrator runs all builds, tests,
-  snapshots, and benchmarks.
-- Rust edition 2024. Perf-neutral refactor: no new per-frame work on
-  the warm path beyond the one id comparison in render().
-- Public API: signatures unchanged; additions limited to what question
-  2 decides plus #[doc(hidden)]/pub(crate) accessors.
-- No non-ASCII characters in code or comments.
-- Files: src/text_renderer.rs, src/text_atlas.rs, src/types.rs, tests.
+There is currently nowhere to encode blur passes: `prepare_with_depth`
+takes `&CommandEncoder` (immutable, unused) and `render` takes
+`&mut RenderPass`. A pass cannot begin on a shared encoder, nor inside
+an active pass.
 
-## Acceptance (run by the orchestrator)
+**Change `prepare` and `prepare_with_depth` to take
+`&mut CommandEncoder`**, and encode the mask and blur passes there,
+after preparation and resource uploads complete. `render` then
+composites the prepared shadow texture inside the caller's pass. This
+keeps the existing division (preparation produces what rendering
+consumes) and leaves submission ordering with the caller. Creating a
+private encoder inside `prepare` is possible but forfeits that ordering
+against unsubmitted caller work; rejected.
 
-- brokkr check + ignored GPU tests pass; brokkr visual --all at 0.0%.
-- render/email2/shared_buffer benches: no regression vs stored results
-  at b7f0ca9 / edd0f7d.
+The iced fork in `repos/iced/` calls this surface and must be updated to
+match. It is a path dependency, so no rev bump is involved.
+
+Correctness details:
+
+- Build the mask from every source glyph that can contribute THROUGH the
+  kernel, including sources outside the area bounds. Clip the final
+  shadow to the area bounds; clipping the source mask first cuts off
+  contributions near the edge.
+- A Gaussian has infinite support. Define an explicit finite-support
+  cutoff proportional to sigma; culling, texture sizing, and allocation
+  all derive from it.
+- Intermediate textures and their inputs must stay valid until the
+  encoded work executes; a second `prepare` before submission must not
+  reuse that storage or overwrite those uniforms.
+- Per-glyph blur is a DIFFERENT semantic and cannot silently substitute:
+  independently blurred glyphs composited source-over do not equal a
+  blur of the combined mask.
+
+### Culling and the retained cache
+
+- Culling needs DIRECTIONAL extents, not one scalar margin. For a
+  decoration with offset `(dx, dy)` and support radius `r`:
+  `left = max(0, r - dx)`, `right = max(0, r + dx)`,
+  `top = max(0, r - dy)`, `bottom = max(0, r + dy)` (positive `dy`
+  down), unioned component-wise across the list. A scalar
+  `r + max(|dx|, |dy|)` is conservative but wrong as the cache
+  invariant: flipping offset DIRECTION at constant magnitude reveals
+  candidates on the opposite side.
+- `run_is_visible` takes a symmetric vertical margin today and must take
+  top and bottom extents separately; `vector_rect_visible` and
+  `re_cull_vector_instances` need all four.
+- Keep candidate-envelope validity and blob-capacity validity as
+  SEPARATE checks. An unchanged envelope does not prove descriptor
+  validity: a far-offset narrow decoration and a centered wide one can
+  share an envelope while needing different grid radii. Conversely a
+  changed envelope only forces a fresh walk when the retained candidates
+  cannot prove coverage of the new envelope - a complete cache can be
+  re-culled.
+- Fill color is NOT paint-only. `fs_main` derives stem darkening from
+  fill RGB brightness, so changing fill color can change COVERAGE, not
+  just paint. Any cache path treating color as a uniform-only update is
+  wrong.
+- Decoration order and uniform order are part of the rebuilt draw
+  metadata even when no vertex upload happens.
+- Depth: analytic decoration draws test depth without writing. Multiple
+  draws at one glyph depth interact with earlier area fills and
+  caller-owned depth. A filtered-shadow composite has no unique
+  source-glyph depth once masks overlap; state its depth semantic
+  explicitly.
+
+### Known pre-existing hole: the global raster tail
+
+`render()` collects every area's raster-fallback glyphs and draws them
+AFTER all vector draws, so area A's bitmap glyph already lands over area
+B's fill. Decorations widen the consequences (area B's shadow cannot sit
+beneath area B's raster glyph while respecting A/B order) but do not
+create the bug. Fixing it means per-area raster ranges inside the same
+ordered draw graph. If decorations stay monochrome-vector-only, say so
+in the API docs; that still does not repair cross-area raster ordering.
+Record it; do not silently rely on the current ordering.
+
+## Recorded, not fixed
+
+A filtered shadow over an area whose glyphs sit at DIFFERENT depths is
+split into one mask per depth, so each is occluded at its own depth. That
+is not the same picture as blurring the union: where two partitions'
+shadows overlap on screen they composite source-over and read darker
+than a single blur of the combined mask would. One composite quad
+carries one depth, so the two properties cannot both hold; occlusion was
+judged the more visible error. Partitions are ordered farthest-first so
+the result is at least deterministic. Reaching it needs an area whose
+glyphs carry different metadata and whose shadows overlap.
+
+The `&mut CommandEncoder` contract is documented on `prepare` but not
+enforced: a caller who submits a different encoder gets silently empty
+shadows and no error.
+
+WGSL `select` does not short-circuit, so the blur's zero-extension still
+issues a texture fetch for every out-of-domain tap and discards it. A
+cost, not a fault.
+
+
+The solid underlay is not an exact disjoint partition where BOTH
+coverages are partial: `f + o(1-f)` can exceed `o`. Under an idealized
+shared distance ramp, `spread >= 1` physical pixel guarantees `o = 1`
+wherever `f > 0` and the artifact vanishes. That bound does NOT transfer
+strictly to the shipped shaders, which use analytic ray coverage plus
+optional extra samples on one side and an approximate Euclidean boundary
+distance on the other. The honest statement: the artifact is
+concentrated at narrow borders and the ideal threshold is one physical
+pixel, times `TextArea::scale`.

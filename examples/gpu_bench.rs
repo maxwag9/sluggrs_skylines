@@ -133,13 +133,15 @@ fn main() {
                 bottom: HEIGHT as i32,
             },
             default_color: cosmic_text::Color::rgb(255, 255, 255),
-            border_color: Color::rgb(0, 10, 0),
-            border_width: 2.0
+            decorations: &[],
         };
-        let encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
-        renderer.prepare(
+        let mut encoder =
+            device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+        renderer
+            .prepare(
                 &device,
                 &queue,
+                &mut encoder,
                 &mut font_system,
                 &mut atlas,
                 &viewport,

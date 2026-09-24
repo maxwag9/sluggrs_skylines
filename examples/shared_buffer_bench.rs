@@ -119,8 +119,7 @@ fn make_areas(buffer: &Buffer, bounds: TextBounds) -> [TextArea<'_>; OCCURRENCES
         scale: 1.0,
         bounds,
         default_color: Color::rgb(255, 255, 255),
-        border_color: Color::rgb(0, 10, 0),
-        border_width: 2.0
+        decorations: &[],
     })
 }
 
@@ -135,7 +134,8 @@ fn prepare(
     areas: &[TextArea<'_>],
     swash_cache: &mut SwashCache,
 ) {
-    let encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+    let mut encoder =
+        device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
     renderer
         .prepare(
             device,

@@ -1,23 +1,32 @@
-//! Interactive sluggrs demo using the library's TextRenderer/TextAtlas pipeline.
-//! Arrow keys to scroll, mouse wheel to zoom, E to toggle MSAA+stem darkening.
+//! Decoration showcase for the `TextArea::decorations` list.
+//!
+//! Each line is its own text area with its own decorations, so the demo
+//! covers the axes that matter: spread, offset, color, font size, weight,
+//! decoration count and order, and the glyph classes that are deliberately
+//! undecorated (COLRv0/COLRv1 emoji).
+//!
+//! A decoration is a solid morphological shape: the glyph dilated by
+//! `spread` and translated by `offset`. Spread alone is an outline, offset
+//! alone is a hard drop shadow, and both together is a spread shadow.
+//!
+//! Mouse wheel zooms (spread and offset are logical, so zoom shows the
+//! physical scaling), B toggles all decorations off for an A/B against the
+//! plain path, E toggles MSAA + stem darkening.
 
 use sluggrs::{
-    Cache, ColorMode, Resolution, TextArea, TextAtlas, TextBounds, TextRenderer, Viewport,
+    Cache, ColorMode, DecorationMode, Resolution, TextArea, TextAtlas, TextBounds, TextDecoration,
+    TextRenderer, Viewport,
 };
 
-use cosmic_text::{Attrs, Buffer, Color, Family, FontSystem, Metrics, Shaping, SwashCache, Weight};
+use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping, SwashCache, Weight};
 
 use std::sync::Arc;
 use winit::{
     application::ApplicationHandler, event::WindowEvent, event_loop::EventLoop, window::Window,
 };
 
-// Embedded fonts
 const INTER_VARIABLE: &[u8] = include_bytes!("fonts/InterVariable.ttf");
-const ROBOTO_REGULAR: &[u8] = include_bytes!("fonts/Roboto-Regular.ttf");
-const ROBOTO_THIN: &[u8] = include_bytes!("fonts/Roboto-Thin.ttf");
 const ROBOTO_BOLD: &[u8] = include_bytes!("fonts/Roboto-Bold.ttf");
-const CASKAYDIA: &[u8] = include_bytes!("fonts/CaskaydiaCoveNerdFont-Regular.ttf");
 const RUNES: &[u8] = include_bytes!("fonts/EBH Runes.otf");
 const TWEMOJI_COLR: &[u8] = include_bytes!("fonts/TwemojiCOLRv0.ttf");
 const NOTO_COLRV1: &[u8] = include_bytes!("fonts/NotoColorEmoji-Regular.ttf");
@@ -31,6 +40,7 @@ struct TextLine {
     left: f32,
     top: f32,
     default_color: cosmic_text::Color,
+    decorations: Vec<TextDecoration>,
 }
 
 struct RenderState {
@@ -48,32 +58,16 @@ struct RenderState {
     scroll: [f32; 2],
     dragging: bool,
     last_mouse: [f32; 2],
+    borders_on: bool,
     enhance: bool,
-    gpu_profiler: Option<wgpu_profiler::GpuProfiler>,
 }
 
 struct App {
     state: Option<RenderState>,
     window: Option<Arc<Window>>,
-    warmup_frames: u32,
 }
 
-impl App {
-    fn new() -> Self {
-        Self {
-            state: None,
-            window: None,
-            warmup_frames: 5,
-        }
-    }
-}
-
-/// Load an optional font from disk; returns None if not found.
-fn try_load_font(path: &str) -> Option<Vec<u8>> {
-    std::fs::read(path).ok()
-}
-
-/// Create a text line with a specific font family, weight, size, position, and color.
+/// Create one bordered line: family, weight, size, position, fill, border.
 #[allow(clippy::too_many_arguments)]
 fn make_line(
     font_system: &mut FontSystem,
@@ -84,7 +78,8 @@ fn make_line(
     left: f32,
     top: f32,
     sf: f32,
-    default_color: cosmic_text::Color
+    default_color: cosmic_text::Color,
+    decorations: Vec<TextDecoration>,
 ) -> TextLine {
     let metrics = Metrics::new(font_size * sf, font_size * sf * 1.2);
     let mut buffer = Buffer::new(font_system, metrics);
@@ -96,33 +91,36 @@ fn make_line(
         left: left * sf,
         top: top * sf,
         default_color,
+        decorations,
     }
 }
 
 fn build_lines(font_system: &mut FontSystem, sf: f32) -> Vec<TextLine> {
     let mut lines = Vec::new();
     let left = 40.0;
-    let mut y = 30.0;
+    let mut y = 24.0;
 
     let white = color(255, 255, 255);
     let light_gray = color(192, 192, 192);
     let gold = color(242, 199, 51);
     let cyan = color(102, 217, 230);
-    let green = color(128, 230, 128);
     let pink = color(242, 128, 166);
+    let black = color(0, 0, 0);
+    let navy = color(24, 32, 72);
+    let crimson = color(196, 48, 64);
 
     let inter = Family::Name("Inter Variable");
     let roboto = Family::Name("Roboto");
-    let caskaydia = Family::Name("CaskaydiaCove Nerd Font");
     let runes = Family::Name("EBH Runes");
-    // The embedded font's actual family name - "Twemoji Mozilla" never
-    // matched, and the line fell back to whatever emoji font won instead.
     let twemoji = Family::Name("Twemoji COLRv0");
     let noto_emoji = Family::Name("Noto Color Emoji");
     let w = |v: u16| Weight(v);
 
+    let border = |clr: cosmic_text::Color, width: f32| vec![TextDecoration::outline(clr, width)];
+    let none = Vec::new;
+
     macro_rules! line {
-        ($family:expr, $weight:expr, $text:expr, $size:expr, $color:expr) => {
+        ($family:expr, $weight:expr, $text:expr, $size:expr, $color:expr, $border:expr) => {
             lines.push(make_line(
                 font_system,
                 $text,
@@ -133,285 +131,173 @@ fn build_lines(font_system: &mut FontSystem, sf: f32) -> Vec<TextLine> {
                 y,
                 sf,
                 $color,
+                $border,
             ));
         };
     }
 
-    // --- Sizes (Inter Variable) ---
-    line!(
-        inter,
-        w(400),
-        "8px Inter: the quick brown fox jumps over the lazy dog \u{2014} MSAA target",
-        8.0,
-        light_gray
-    );
-    y += 16.0;
-    line!(
-        inter,
-        w(400),
-        "10px Inter: the quick brown fox jumps over the lazy dog",
-        10.0,
-        light_gray
-    );
-    y += 20.0;
-    line!(
-        inter,
-        w(400),
-        "12px Inter: the quick brown fox jumps over the lazy dog",
-        12.0,
-        light_gray
-    );
-    y += 24.0;
-    line!(
-        inter,
-        w(400),
-        "16px Inter: the quick brown fox jumps over the lazy dog",
-        16.0,
-        white
-    );
-    y += 30.0;
-    line!(
-        inter,
-        w(400),
-        "24px Inter: the quick brown fox jumps over the lazy dog",
-        24.0,
-        white
-    );
-    y += 40.0;
-    line!(
-        inter,
-        w(400),
-        "48px Inter: Slug GPU text rendering",
-        48.0,
-        white
-    );
-    y += 68.0;
-    line!(inter, w(400), "72px Inter", 72.0, gold);
-    y += 90.0;
+    macro_rules! caption {
+        ($text:expr) => {
+            line!(inter, w(400), $text, 13.0, light_gray, none());
+            y += 22.0;
+        };
+    }
 
-    // --- Inter Variable weights ---
-    line!(
-        inter,
-        w(100),
-        "24px Inter Thin (wght=100): fine hairline strokes",
-        24.0,
-        light_gray
-    );
-    y += 38.0;
-    line!(
-        inter,
-        w(300),
-        "24px Inter Light (wght=300): lightweight text",
-        24.0,
-        white
-    );
-    y += 38.0;
-    line!(
-        inter,
-        w(400),
-        "24px Inter Regular (wght=400): standard weight",
-        24.0,
-        white
-    );
-    y += 38.0;
-    line!(
-        inter,
-        w(700),
-        "24px Inter Bold (wght=700): heavy strokes",
-        24.0,
-        white
-    );
-    y += 38.0;
+    // --- Width ladder: same fill, same size, growing border ---
+    caption!("Width ladder (36px Inter Bold, black border, logical widths)");
+    for width in [0.5_f32, 1.0, 2.0, 3.0, 5.0] {
+        let text = format!("{width}px border: Slug GPU text rendering");
+        line!(inter, w(700), &text, 36.0, white, border(black, width));
+        y += 52.0;
+    }
+    y += 14.0;
+
+    // --- Border color against the same fill ---
+    caption!("Border color (48px Inter Black, 2px border)");
+    line!(inter, w(900), "navy on gold", 48.0, gold, border(navy, 2.0));
+    y += 66.0;
     line!(
         inter,
         w(900),
-        "24px Inter Black (wght=900): maximum weight",
-        24.0,
-        white
+        "crimson on white",
+        48.0,
+        white,
+        border(crimson, 2.0)
+    );
+    y += 66.0;
+    line!(
+        inter,
+        w(900),
+        "gold on navy fill",
+        48.0,
+        navy,
+        border(gold, 2.0)
+    );
+    y += 74.0;
+
+    // --- Small sizes: where a border most easily swallows the fill ---
+    caption!("Small sizes with a 1px border (fill can be swallowed)");
+    for size in [10.0_f32, 12.0, 16.0, 24.0] {
+        let text = format!("{size}px Inter with a 1px black border: the quick brown fox");
+        line!(inter, w(400), &text, size, white, border(black, 1.0));
+        y += size * 1.5 + 6.0;
+    }
+    y += 12.0;
+
+    // --- Weight interaction: thin strokes vs a heavy border ---
+    caption!("Weight vs border (28px, 1.5px black border)");
+    line!(
+        inter,
+        w(100),
+        "Inter Thin (wght=100): hairlines under a border",
+        28.0,
+        white,
+        border(black, 1.5)
     );
     y += 44.0;
-
-    // --- Roboto weights ---
-    line!(
-        roboto,
-        Weight::THIN,
-        "24px Roboto Thin (separate TTF)",
-        24.0,
-        light_gray
-    );
-    y += 38.0;
-    line!(
-        roboto,
-        Weight::NORMAL,
-        "24px Roboto Regular (separate TTF)",
-        24.0,
-        white
-    );
-    y += 38.0;
     line!(
         roboto,
         Weight::BOLD,
-        "24px Roboto Bold (separate TTF): tight joins",
-        24.0,
-        white
+        "Roboto Bold (separate TTF): tight joins under a border",
+        28.0,
+        white,
+        border(black, 1.5)
     );
-    y += 44.0;
+    y += 52.0;
 
-    // --- Font variety ---
+    // --- CFF/OTF outlines ---
+    caption!("OTF/CFF cubic outlines (36px EBH Runes, 2px border)");
     line!(
-        caskaydia,
+        runes,
         w(400),
-        "20px Caskaydia Cove (mono, TTF): fn main() { let x = 42; }",
-        20.0,
-        cyan
+        "abcdefghijklm",
+        36.0,
+        cyan,
+        border(navy, 2.0)
     );
-    y += 36.0;
+    y += 60.0;
 
-    // Optional disk fonts
-    if font_system
-        .db()
-        .faces()
-        .any(|f| f.families.iter().any(|(name, _)| name == "Tisa Pro"))
-    {
-        line!(
-            Family::Name("Tisa Pro"),
-            w(400),
-            "22px Tisa Pro (serif, OTF/CFF cubic curves)",
-            22.0,
-            white
-        );
-        y += 38.0;
-    }
-
-    if font_system.db().faces().any(|f| {
-        f.families
-            .iter()
-            .any(|(name, _)| name == "Berlingske Serif")
-    }) {
-        line!(
-            Family::Name("Berlingske Serif"),
-            w(400),
-            "22px Berlingske Serif (TTF)",
-            22.0,
-            white
-        );
-        y += 38.0;
-    }
-
-    line!(runes, w(400), "abcdefghijklm", 36.0, gold);
-    // 36px line box is 43.2px tall - clear it before placing the caption.
-    y += 46.0;
-    line!(
-        inter,
-        w(400),
-        "36px EBH Runes (OTF): decorative outlines",
-        14.0,
-        light_gray
-    );
-    y += 40.0;
-
-    // --- COLRv0 color emoji ---
-    y += 16.0;
+    // --- Deliberately borderless glyph classes ---
+    caption!("COLRv0 / COLRv1 emoji: borderless by design, border is ignored");
     line!(
         twemoji,
         w(400),
-        "\u{1F600}\u{1F60D}\u{1F525}\u{2764}\u{1F680}\u{1F308}\u{1F3B5}\u{2B50}",
+        "\u{1F600}\u{1F60D}\u{1F525}\u{2764}\u{1F680}",
         48.0,
-        white
+        white,
+        border(black, 3.0)
     );
-    // 48px line box is 57.6px tall - clear it before placing the caption.
-    y += 60.0;
-    line!(
-        inter,
-        w(400),
-        "48px Twemoji COLRv0: color vector emoji",
-        14.0,
-        light_gray
-    );
-    y += 40.0;
-
-    // --- COLRv1 gradient emoji ---
-    y += 16.0;
+    y += 62.0;
     line!(
         noto_emoji,
         w(400),
-        "\u{1F600}\u{1F60D}\u{1F525}\u{2764}\u{1F680}\u{1F308}\u{1F3B5}\u{2B50}",
+        "\u{1F600}\u{1F60D}\u{1F525}\u{2764}\u{1F680}",
         48.0,
-        white
+        white,
+        border(black, 3.0)
     );
-    y += 60.0;
-    line!(
-        inter,
-        w(400),
-        "48px Noto COLRv1: gradient vector emoji",
-        14.0,
-        light_gray
-    );
-    y += 40.0;
+    y += 66.0;
 
-    // --- CFF/OTF cubic subdivision ---
-    let cff_fonts: &[(&str, &str, f32, cosmic_text::Color)] = &[
-        (
-            "Nimbus Roman",
-            "24px Nimbus Roman (CFF): Sphinx of black quartz, judge my vow",
-            24.0,
+    // --- Hard drop shadows: offset, no dilation ---
+    caption!("Hard drop shadow (40px Inter Bold, spread 0, offset only)");
+    for (dx, dy) in [(2.0_f32, 2.0_f32), (4.0, 4.0), (-3.0, 3.0)] {
+        let text = format!("offset ({dx}, {dy}): shadow with no spread");
+        line!(
+            inter,
+            w(700),
+            &text,
+            40.0,
             white,
-        ),
-        (
-            "Nimbus Roman",
-            "48px Nimbus Roman (CFF): QWERTY &@#",
-            48.0,
-            gold,
-        ),
-        (
-            "Nimbus Sans",
-            "24px Nimbus Sans (CFF): Pack my box with five dozen liquor jugs",
-            24.0,
-            white,
-        ),
-        (
-            "URW Bookman",
-            "24px URW Bookman Light (CFF): Curved serifs test",
-            24.0,
-            cyan,
-        ),
-        (
-            "Z003",
-            "30px Zapf Chancery (CFF italic): Flowing script curves",
-            30.0,
-            pink,
-        ),
-    ];
-    for (family_name, text, size, clr) in cff_fonts {
-        if font_system
-            .db()
-            .faces()
-            .any(|f| f.families.iter().any(|(name, _)| name == *family_name))
-        {
-            line!(Family::Name(family_name), w(400), text, *size, *clr);
-            let spacing = (*size * 1.5).max(38.0);
-            y += spacing;
-        }
+            vec![TextDecoration::shadow(black, dx, dy)]
+        );
+        y += 58.0;
     }
+    y += 12.0;
 
-    // --- Known artifact glyphs ---
+    // --- Spread plus offset on one decoration ---
+    caption!("Spread + offset together (40px, 2px spread, offset (3, 3))");
     line!(
         inter,
         w(700),
-        "36px Inter Bold artifact test: a & a & a & a",
-        36.0,
-        pink
+        "a dilated, displaced shadow",
+        40.0,
+        white,
+        vec![TextDecoration {
+            color: navy,
+            spread: 2.0,
+            offset: [3.0, 3.0],
+            blur: 0.0,
+            mode: DecorationMode::Solid,
+        }]
     );
-    y += 54.0;
+    y += 62.0;
+
+    // --- Several decorations on one area, CSS back-to-front order ---
+    caption!("Three decorations, back-to-front like CSS: first entry on top");
     line!(
-        roboto,
-        Weight::BOLD,
-        "36px Roboto Bold artifact test: a & a & a & a",
-        36.0,
-        pink
+        inter,
+        w(700),
+        "outline over cyan over crimson",
+        44.0,
+        white,
+        vec![
+            TextDecoration::outline(black, 1.5),
+            TextDecoration::shadow(cyan, 4.0, 4.0),
+            TextDecoration::shadow(crimson, 8.0, 8.0),
+        ]
     );
-    y += 54.0;
-    line!(inter, w(700), "60px Inter Bold: & & & a a a", 60.0, green);
+    y += 70.0;
+
+    // --- A/B reference: identical line with no decoration at all ---
+    caption!("Reference: no decorations (the zero-cost normal path)");
+    line!(
+        inter,
+        w(700),
+        "36px Inter Bold, decorations: &[]",
+        36.0,
+        pink,
+        none()
+    );
 
     lines
 }
@@ -426,28 +312,15 @@ async fn init_render_state(window: Arc<Window>) -> RenderState {
         .request_adapter(&wgpu::RequestAdapterOptions {
             power_preference: wgpu::PowerPreference::HighPerformance,
             compatible_surface: Some(&surface),
-                    force_fallback_adapter: false,
-        apply_limit_buckets: false,
+            force_fallback_adapter: false,
         })
         .await
         .expect("failed to find adapter");
 
-    let has_timestamps = adapter.features().contains(wgpu::Features::TIMESTAMP_QUERY);
-    let has_pass_timestamps = adapter
-        .features()
-        .contains(wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES);
-    let mut features = wgpu::Features::empty();
-    if has_timestamps {
-        features |= wgpu::Features::TIMESTAMP_QUERY;
-    }
-    if has_pass_timestamps {
-        features |= wgpu::Features::TIMESTAMP_QUERY_INSIDE_PASSES;
-    }
-
     let (device, queue) = adapter
         .request_device(&wgpu::DeviceDescriptor {
-            label: Some("sluggrs demo2 device"),
-            required_features: features,
+            label: Some("sluggrs borders device"),
+            required_features: wgpu::Features::empty(),
             required_limits: wgpu::Limits::default(),
             ..Default::default()
         })
@@ -463,42 +336,19 @@ async fn init_render_state(window: Arc<Window>) -> RenderState {
 
     let sf = window.scale_factor() as f32;
     eprintln!("Adapter: {:?}", adapter.get_info().name);
-    eprintln!("Surface format: {:?}", config.format);
-    eprintln!("Physical size: {}x{}", config.width, config.height);
     eprintln!("Scale factor: {sf}");
 
-    // --- Font system ---
-    // Isolated database: only the embedded fonts plus the explicit disk fonts
-    // below. Loading system fonts made the demo non-deterministic - a system
-    // CBDT-bitmap "Noto Color Emoji" shared its family name with our embedded
-    // COLRv1 font and won the match, silently routing both emoji lines
-    // through the raster fallback instead of the COLR vector paths.
+    // Isolated database: only the embedded fonts, so a system emoji font
+    // cannot win the family match and route the emoji lines through the
+    // raster fallback instead of the COLR vector paths.
     let mut db = cosmic_text::fontdb::Database::new();
     db.load_font_data(INTER_VARIABLE.to_vec());
-    db.load_font_data(ROBOTO_REGULAR.to_vec());
-    db.load_font_data(ROBOTO_THIN.to_vec());
     db.load_font_data(ROBOTO_BOLD.to_vec());
-    db.load_font_data(CASKAYDIA.to_vec());
     db.load_font_data(RUNES.to_vec());
     db.load_font_data(TWEMOJI_COLR.to_vec());
     db.load_font_data(NOTO_COLRV1.to_vec());
-
-    // Optional disk fonts
-    for path in [
-        "/home/folk/.local/share/fonts/TisaPro-Regular.otf",
-        "/home/folk/.local/share/fonts/BerlingskeSerif-Regular.ttf",
-        "/usr/share/fonts/opentype/urw-base35/NimbusRoman-Regular.otf",
-        "/usr/share/fonts/opentype/urw-base35/NimbusSans-Regular.otf",
-        "/usr/share/fonts/opentype/urw-base35/URWBookman-Light.otf",
-        "/usr/share/fonts/opentype/urw-base35/Z003-MediumItalic.otf",
-    ] {
-        if let Some(data) = try_load_font(path) {
-            db.load_font_data(data);
-        }
-    }
     let mut font_system = FontSystem::new_with_locale_and_db("en-US".to_string(), db);
 
-    // --- Library pipeline ---
     let cache = Cache::new(&device);
     let mut atlas =
         TextAtlas::with_color_mode(&device, &queue, &cache, config.format, ColorMode::Accurate);
@@ -515,22 +365,7 @@ async fn init_render_state(window: Arc<Window>) -> RenderState {
 
     let lines = build_lines(&mut font_system, sf);
     eprintln!("Built {} text lines", lines.len());
-
-    let gpu_profiler = if has_timestamps {
-        Some(
-            wgpu_profiler::GpuProfiler::new(
-                &device,
-                wgpu_profiler::GpuProfilerSettings {
-                    enable_timer_queries: true,
-                    enable_debug_groups: false,
-                    max_num_pending_frames: 3,
-                },
-            )
-            .expect("Failed to create GPU profiler"),
-        )
-    } else {
-        None
-    };
+    eprintln!("wheel = zoom, drag = pan, arrows = scroll, B = borders, E = MSAA, Home = reset");
 
     RenderState {
         surface,
@@ -547,8 +382,8 @@ async fn init_render_state(window: Arc<Window>) -> RenderState {
         scroll: [0.0, 0.0],
         dragging: false,
         last_mouse: [0.0, 0.0],
+        borders_on: true,
         enhance: true,
-        gpu_profiler,
     }
 }
 
@@ -561,9 +396,10 @@ fn render(state: &mut RenderState) {
         }
     };
 
-    let view = frame.texture.create_view(&wgpu::TextureViewDescriptor::default());
+    let view = frame
+        .texture
+        .create_view(&wgpu::TextureViewDescriptor::default());
 
-    // Update viewport for current zoom
     let vp_w = (state.config.width as f32 / state.zoom) as u32;
     let vp_h = (state.config.height as f32 / state.zoom) as u32;
     state.viewport.update(
@@ -575,7 +411,7 @@ fn render(state: &mut RenderState) {
     );
     state.viewport.set_scroll_offset(&state.queue, state.scroll);
 
-    // Build text areas from pre-built lines
+    let borders_on = state.borders_on;
     let text_areas: Vec<TextArea<'_>> = state
         .lines
         .iter()
@@ -591,26 +427,30 @@ fn render(state: &mut RenderState) {
                 bottom: vp_h as i32,
             },
             default_color: line.default_color,
-            decorations: &[],
+            decorations: if borders_on { &line.decorations } else { &[] },
         })
         .collect();
 
     // One encoder for both phases: prepare() encodes the mask and blur passes
     // for filtered decorations, so a separate render encoder would leave that
-    // work unsubmitted.
+    // work unsubmitted and every blurred shadow empty.
     let mut encoder = state
         .device
         .create_command_encoder(&wgpu::CommandEncoderDescriptor {
             label: Some("sluggrs encoder"),
         });
 
-    state.text_renderer.prepare(
+    state
+        .text_renderer
+        .prepare(
             &state.device,
             &state.queue,
+            &mut encoder,
             &mut state.font_system,
             &mut state.atlas,
             &state.viewport,
-            text_areas
+            text_areas,
+            &mut state.swash_cache,
         )
         .expect("prepare failed");
 
@@ -637,40 +477,14 @@ fn render(state: &mut RenderState) {
             occlusion_query_set: None,
         });
 
-        let query = state
-            .gpu_profiler
-            .as_ref()
-            .map(|p| p.begin_query("text_render", &mut pass));
-
         state
             .text_renderer
             .render(&state.atlas, &state.viewport, &mut pass)
             .expect("render failed");
-
-        if let (Some(profiler), Some(query)) = (&state.gpu_profiler, query) {
-            profiler.end_query(&mut pass, query);
-        }
-    }
-
-    if let Some(profiler) = &mut state.gpu_profiler {
-        profiler.resolve_queries(&mut encoder);
     }
 
     state.queue.submit(std::iter::once(encoder.finish()));
-
-    if let Some(profiler) = &mut state.gpu_profiler {
-        let _ = profiler.end_frame();
-        if let Some(results) = profiler.process_finished_frame(state.queue.get_timestamp_period()) {
-            for r in &results {
-                if let Some(time) = &r.time {
-                    let ms = (time.end - time.start) * 1000.0;
-                    eprintln!("gpu_{}_ms={ms:.3}", r.label);
-                }
-            }
-        }
-    }
-
-    state.queue.present(frame);
+    frame.present();
     state.atlas.trim();
 }
 
@@ -684,7 +498,7 @@ impl ApplicationHandler for App {
             event_loop
                 .create_window(
                     Window::default_attributes()
-                        .with_title("sluggrs demo2")
+                        .with_title("sluggrs borders")
                         .with_inner_size(winit::dpi::LogicalSize::new(1200, 900)),
                 )
                 .expect("failed to create window"),
@@ -747,6 +561,10 @@ impl ApplicationHandler for App {
                             state.scroll = [0.0, 0.0];
                             state.zoom = 1.0;
                         }
+                        winit::keyboard::KeyCode::KeyB => {
+                            state.borders_on = !state.borders_on;
+                            eprintln!("borders: {}", if state.borders_on { "ON" } else { "OFF" });
+                        }
                         winit::keyboard::KeyCode::KeyE => {
                             state.enhance = !state.enhance;
                             state.viewport.set_msaa_hint(&state.queue, state.enhance);
@@ -789,12 +607,6 @@ impl ApplicationHandler for App {
             WindowEvent::RedrawRequested => {
                 if let Some(state) = &mut self.state {
                     render(state);
-                    if self.warmup_frames > 0 {
-                        self.warmup_frames -= 1;
-                        if let Some(window) = &self.window {
-                            window.request_redraw();
-                        }
-                    }
                 }
             }
             _ => {}
@@ -807,6 +619,9 @@ fn main() {
 
     let event_loop = EventLoop::new().expect("failed to create event loop");
     event_loop.set_control_flow(winit::event_loop::ControlFlow::Wait);
-    let mut app = App::new();
+    let mut app = App {
+        state: None,
+        window: None,
+    };
     event_loop.run_app(&mut app).expect("event loop failed");
 }

@@ -135,7 +135,8 @@ fn prepare(
     swash_cache: &mut SwashCache,
     buffer: &Buffer,
 ) -> Result<(), sluggrs::PrepareError> {
-    let encoder = device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+    let mut encoder =
+        device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
     renderer.prepare(
         device,
         queue,
@@ -154,9 +155,9 @@ fn prepare(
                 bottom: 1080,
             },
             default_color: cosmic_text::Color::rgb(255, 255, 255),
-            border_color: Color::rgb(0, 10, 0),
-            border_width: 2.0
-        }]
+            decorations: &[],
+        }],
+        swash_cache,
     )
 }
 

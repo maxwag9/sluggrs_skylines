@@ -20,8 +20,8 @@ use std::io::BufWriter;
 
 use cosmic_text::{Attrs, Buffer, Color, Family, FontSystem, Metrics, Shaping, Weight};
 use sluggrs::{
-    Cache, ColorMode, Resolution, SwashCache, TextArea, TextAtlas, TextBounds, TextRenderer,
-    Viewport,
+    Cache, ColorMode, DecorationMode, Resolution, SwashCache, TextArea, TextAtlas, TextBounds,
+    TextDecoration, TextRenderer, Viewport,
 };
 
 const MARGIN: f32 = 24.0;
@@ -79,6 +79,7 @@ struct Block {
     size: f32,
     color: Color,
     text: &'static str,
+    decorations: Vec<TextDecoration>,
 }
 
 impl Block {
@@ -89,6 +90,7 @@ impl Block {
             size,
             color: Color::rgb(255, 255, 255),
             text,
+            decorations: Vec::new(),
         }
     }
 
@@ -99,6 +101,11 @@ impl Block {
 
     fn color(mut self, color: Color) -> Self {
         self.color = color;
+        self
+    }
+
+    fn decorate(mut self, decorations: Vec<TextDecoration>) -> Self {
+        self.decorations = decorations;
         self
     }
 }
@@ -173,6 +180,155 @@ fn scene(id: &str) -> Option<Vec<Block>> {
                 "let band = curves[i] >> 2; // 0x2E74 & 0x0101",
             ),
         ]),
+        // Decorations: outline, hard shadow, spread+offset together, and a
+        // stack whose paint order is observable. The 9px line exercises the
+        // small-size regime where a 1px outline can swallow the fill.
+        //
+        // Every decoration color here is SATURATED, never near-black: the
+        // scene renders on a black background, so a black outline would be
+        // invisible and the snapshot would witness nothing.
+        "decorations" => {
+            let gold = Color::rgb(242, 199, 51);
+            let cyan = Color::rgb(102, 217, 230);
+            let crimson = Color::rgb(196, 48, 64);
+            let green = Color::rgb(96, 208, 128);
+            Some(vec![
+                Block::new(inter, 36.0, "outline 2px")
+                    .weight(Weight::BOLD)
+                    .decorate(vec![TextDecoration::outline(gold, 2.0)]),
+                Block::new(inter, 36.0, "outline 0.5px, sub-pixel spread")
+                    .weight(Weight::BOLD)
+                    .decorate(vec![TextDecoration::outline(cyan, 0.5)]),
+                Block::new(inter, 36.0, "hard shadow, no spread")
+                    .weight(Weight::BOLD)
+                    .decorate(vec![TextDecoration::shadow(crimson, 3.0, 3.0)]),
+                Block::new(inter, 36.0, "shadow up and left")
+                    .weight(Weight::BOLD)
+                    .decorate(vec![TextDecoration::shadow(green, -3.0, -3.0)]),
+                Block::new(inter, 36.0, "spread 2 plus offset 3")
+                    .weight(Weight::BOLD)
+                    .decorate(vec![TextDecoration {
+                        color: gold,
+                        spread: 2.0,
+                        offset: [3.0, 3.0],
+                        blur: 0.0,
+                        mode: DecorationMode::Solid,
+                    }]),
+                // First entry paints on top, like CSS text-shadow: gold over
+                // cyan over the furthest crimson.
+                Block::new(inter, 40.0, "stacked: gold over cyan over crimson")
+                    .weight(Weight::BOLD)
+                    .decorate(vec![
+                        TextDecoration::outline(gold, 1.5),
+                        TextDecoration::shadow(cyan, 5.0, 5.0),
+                        TextDecoration::shadow(crimson, 10.0, 10.0),
+                    ]),
+                Block::new(inter, 9.0, PANGRAM).decorate(vec![TextDecoration::outline(gold, 1.0)]),
+                // Same glyphs at two sizes in one frame, both decorated:
+                // the blob capacity must satisfy the SMALLER ppem, which
+                // needs the larger radius in font units.
+                Block::new(inter, 12.0, "shared glyphs across sizes")
+                    .decorate(vec![TextDecoration::outline(cyan, 2.0)]),
+                Block::new(inter, 48.0, "shared glyphs across sizes")
+                    .decorate(vec![TextDecoration::outline(cyan, 2.0)]),
+                // Undecorated reference: the zero-cost normal path.
+                Block::new(inter, 36.0, "no decorations").weight(Weight::BOLD),
+            ])
+        }
+        // Ring mode. A transparent fill under a Solid decoration would be a
+        // solid fat glyph; under a Ring it is hollow, because the ring and
+        // the fill are emitted as disjoint regions by one fragment.
+        "ring" => {
+            let gold = Color::rgb(242, 199, 51);
+            let cyan = Color::rgb(102, 217, 230);
+            let crimson = Color::rgb(196, 48, 64);
+            let clear = Color::rgba(0, 0, 0, 0);
+            let translucent = Color::rgba(255, 255, 255, 90);
+            Some(vec![
+                // The headline case: nothing painted where the fill is.
+                Block::new(inter, 48.0, "hollow: ring over a clear fill")
+                    .weight(Weight::BOLD)
+                    .color(clear)
+                    .decorate(vec![TextDecoration::ring(gold, 2.0)]),
+                Block::new(inter, 48.0, "hollow, thin 1px ring")
+                    .weight(Weight::BOLD)
+                    .color(clear)
+                    .decorate(vec![TextDecoration::ring(cyan, 1.0)]),
+                // Ring with a visible fill: the two regions are disjoint, so
+                // the seam between them must not darken or leave a gap.
+                Block::new(inter, 48.0, "ring plus an opaque fill")
+                    .weight(Weight::BOLD)
+                    .decorate(vec![TextDecoration::ring(crimson, 2.5)]),
+                // Translucent fill is the case a separate fill draw cannot
+                // express at all: the backdrop shows through the counter
+                // while the ring stays solid.
+                Block::new(inter, 48.0, "ring plus a translucent fill")
+                    .weight(Weight::BOLD)
+                    .color(translucent)
+                    .decorate(vec![TextDecoration::ring(gold, 2.5)]),
+                // Ring above a shadow: the ring must be first in the list,
+                // and the shadow must stay behind it.
+                Block::new(inter, 48.0, "ring over a shadow")
+                    .weight(Weight::BOLD)
+                    .color(clear)
+                    .decorate(vec![
+                        TextDecoration::ring(cyan, 2.0),
+                        TextDecoration::shadow(crimson, 6.0, 6.0),
+                    ]),
+                // Small sizes exercise the coverage policy the combined
+                // fragment has to reproduce: extra sampling below 16 ppem and
+                // brightness darkening below 48 ppem.
+                Block::new(inter, 12.0, PANGRAM)
+                    .color(clear)
+                    .decorate(vec![TextDecoration::ring(gold, 1.0)]),
+                Block::new(inter, 24.0, "ring at 24px")
+                    .color(clear)
+                    .decorate(vec![TextDecoration::ring(gold, 1.5)]),
+                // Solid at the same width and a clear fill, for contrast:
+                // this one SHOULD be a solid slab, not hollow.
+                Block::new(inter, 48.0, "solid, clear fill: a slab")
+                    .weight(Weight::BOLD)
+                    .color(clear)
+                    .decorate(vec![TextDecoration::outline(gold, 2.0)]),
+            ])
+        }
+        // Blurred shadows. Unlike every other decoration these are a
+        // convolution of the whole area mask, so touching glyphs blur into
+        // one another and counters haze shut.
+        "blur" => {
+            let crimson = Color::rgb(196, 48, 64);
+            let cyan = Color::rgb(102, 217, 230);
+            let gold = Color::rgb(242, 199, 51);
+            Some(vec![
+                Block::new(inter, 48.0, "blur 2, offset (3, 3)")
+                    .weight(Weight::BOLD)
+                    .decorate(vec![TextDecoration::blurred_shadow(crimson, 3.0, 3.0, 2.0)]),
+                Block::new(inter, 48.0, "blur 6, offset (4, 4)")
+                    .weight(Weight::BOLD)
+                    .decorate(vec![TextDecoration::blurred_shadow(crimson, 4.0, 4.0, 6.0)]),
+                // A large sigma on small type is where an SDF feather looks
+                // most obviously wrong: a real blur becomes a soft mass.
+                Block::new(inter, 18.0, "blur 8 on small type")
+                    .decorate(vec![TextDecoration::blurred_shadow(cyan, 0.0, 0.0, 8.0)]),
+                // Zero offset: a glow centred on the glyph.
+                Block::new(inter, 56.0, "centred glow")
+                    .weight(Weight::BOLD)
+                    .decorate(vec![TextDecoration::blurred_shadow(gold, 0.0, 0.0, 5.0)]),
+                // Tight kerning and counters: the cases that separate a
+                // convolution from a distance falloff.
+                Block::new(inter, 40.0, "aeob88@@ lll rn rn")
+                    .weight(Weight::BOLD)
+                    .decorate(vec![TextDecoration::blurred_shadow(cyan, 0.0, 0.0, 3.0)]),
+                // A blurred shadow behind a hard one: both kinds in one list.
+                Block::new(inter, 44.0, "blurred behind hard")
+                    .weight(Weight::BOLD)
+                    .decorate(vec![
+                        TextDecoration::shadow(gold, 2.0, 2.0),
+                        TextDecoration::blurred_shadow(crimson, 8.0, 8.0, 4.0),
+                    ]),
+                Block::new(inter, 40.0, "no shadow").weight(Weight::BOLD),
+            ])
+        }
         _ => None,
     }
 }
@@ -260,9 +416,9 @@ fn main() {
 
     // Lay the blocks out top to bottom, wrapping at the target width.
     let usable_width = args.width as f32 - MARGIN * 2.0;
-    let mut buffers: Vec<(Buffer, Color, f32)> = Vec::new();
+    let mut buffers: Vec<(Buffer, Color, f32, Vec<TextDecoration>)> = Vec::new();
     let mut cursor_y = MARGIN;
-    for block in &blocks {
+    for block in blocks {
         let line_height = (block.size * 1.3).ceil();
         let metrics = Metrics::new(block.size, line_height);
         let mut buffer = Buffer::new(&mut font_system, metrics);
@@ -275,8 +431,17 @@ fn main() {
         for run in buffer.layout_runs() {
             block_height = block_height.max(run.line_top + line_height);
         }
+        // Decorations paint outside the text box, so a shadow reaching down
+        // would otherwise overlap the next block and make the scene
+        // unreadable. Reserve the furthest downward reach.
+        let reach_down = block
+            .decorations
+            .iter()
+            .map(|d| d.spread + d.offset[1].max(0.0))
+            .fold(0.0_f32, f32::max);
+        block_height += reach_down;
 
-        buffers.push((buffer, block.color, cursor_y));
+        buffers.push((buffer, block.color, cursor_y, block.decorations));
         cursor_y += block_height + GAP;
     }
 
@@ -288,15 +453,14 @@ fn main() {
     };
     let areas: Vec<TextArea> = buffers
         .iter()
-        .map(|(buffer, color, top)| TextArea {
+        .map(|(buffer, color, top, decorations)| TextArea {
             buffer,
             left: MARGIN,
             top: *top,
             scale: 1.0,
             bounds,
             default_color: *color,
-            border_color: Color::rgb(0, 10, 0),
-            border_width: 2.0
+            decorations,
         })
         .collect();
 
@@ -322,8 +486,9 @@ fn main() {
         mapped_at_creation: false,
     });
 
-    let mut encoder =
-        device.create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
+    // Reuse the encoder prepare() wrote into: it now carries the mask and
+    // blur passes for any filtered decoration, and dropping it would discard
+    // them, leaving every blurred shadow empty.
     {
         let mut pass = encoder.begin_render_pass(&wgpu::RenderPassDescriptor {
             label: Some("snapshot pass"),

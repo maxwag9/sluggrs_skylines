@@ -286,7 +286,7 @@ impl RenderHarness {
         buffer.set_text(text, &Attrs::new(), Shaping::Advanced, None);
         buffer.shape_until_scroll(&mut self.font_system, false);
 
-        let encoder = self
+        let mut encoder = self
             .device
             .create_command_encoder(&wgpu::CommandEncoderDescriptor { label: None });
 
@@ -302,8 +302,7 @@ impl RenderHarness {
                 bottom: 1080,
             },
             default_color: cosmic_text::Color::rgb(255, 255, 255),
-            border_color: Color::rgb(0, 10, 0),
-            border_width: 2.0
+            decorations: &[],
         };
 
         self.renderer.prepare(

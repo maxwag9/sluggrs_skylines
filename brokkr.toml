@@ -50,5 +50,26 @@ fonts = [
     "examples/fonts/CaskaydiaCoveNerdFont-Regular.ttf",
 ]
 
+[[sluggrs.snapshot]]
+id = "decorations"
+description = "Outlines, hard and spread shadows, stacked paint order, and shared glyphs decorated at two sizes"
+fonts = [
+    "examples/fonts/InterVariable.ttf",
+]
+
+[[sluggrs.snapshot]]
+id = "ring"
+description = "Ring mode: hollow text, ring with opaque and translucent fills, ring over a shadow, and a Solid slab for contrast"
+fonts = [
+    "examples/fonts/InterVariable.ttf",
+]
+
+[[sluggrs.snapshot]]
+id = "blur"
+description = "Blurred shadows: sigma sweep, large sigma on small type, centred glow, kerning and counters, and a blurred shadow behind a hard one"
+fonts = [
+    "examples/fonts/InterVariable.ttf",
+]
+
 [test]
 debug = true
