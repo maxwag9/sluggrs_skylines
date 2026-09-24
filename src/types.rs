@@ -1,3 +1,5 @@
+use serde::{Deserialize, Serialize};
+
 /// The screen resolution to use when rendering text.
 #[repr(C)]
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
@@ -81,7 +83,7 @@ pub(crate) fn blur_support(sigma: f32) -> f32 {
 }
 
 /// What a decoration paints.
-#[derive(Clone, Copy, Debug, Default, Eq, PartialEq)]
+#[derive(Clone, Copy, Debug, Default, Eq, PartialEq, Deserialize, Serialize)]
 pub enum DecorationMode {
     /// The whole dilated glyph, painted under the fill. An outline when the
     /// fill is opaque, since the fill hides the interior.
