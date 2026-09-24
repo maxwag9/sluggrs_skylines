@@ -7,6 +7,19 @@ license = "MIT OR Apache-2.0 OR Zlib"
 repository = "https://github.com/maxwag9/sluggrs_skylines"
 description = "A Fork of sluggrs, ported to the newest wgpu version"
 
+exclude = [
+    ".idea/**",
+    ".brokkr/**",
+    "notes/**",
+    "snapshots/**",
+    "examples/fonts/**",
+    "AGENTS.md",
+    "CLAUDE.md",
+    "LLM.md",
+    "WORK.md",
+    "TODO.md",
+]
+
 [features]
 hotpath = ["hotpath/hotpath"]
 hotpath-alloc = ["hotpath/hotpath", "hotpath/hotpath-alloc"]
@@ -104,3 +117,4 @@ clone_on_ref_ptr = "deny"
 # Safety: no debug/placeholder code in production
 dbg_macro = "deny"
 todo = "deny"
+
