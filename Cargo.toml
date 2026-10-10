@@ -1,11 +1,11 @@
 [package]
 name = "sluggrs_skylines"
-version = "0.3.1"
+version = "0.3.3"
 edition = "2024"
 rust-version = "1.98"
 license = "MIT OR Apache-2.0 OR Zlib"
 repository = "https://github.com/maxwag9/sluggrs_skylines"
-description = "A Fork of sluggrs, ported to the newest wgpu version"
+description = "A Fork of sluggrs, ported to the newest wgpu version with new features as needed!"
 
 exclude = [
     ".idea/**",
@@ -27,10 +27,10 @@ hotpath-alloc = ["hotpath/hotpath", "hotpath/hotpath-alloc"]
 [dependencies]
 cosmic-text = "0.19"
 wgpu = "30.0.1"
-skrifa = "0.46.2"
+skrifa = "0.48.0"
 bytemuck = { version = "1", features = ["derive"] }
 log = "0.4"
-hotpath = "0.25.1"
+hotpath = "0.28.6"
 rustc-hash = "2"
 serde = { version = "1.0.229", features = ["derive"] }
 

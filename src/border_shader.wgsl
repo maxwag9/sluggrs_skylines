@@ -45,12 +45,15 @@ fn vs_border(instance: GlyphInstance, @builtin(vertex_index) vid: u32) -> Border
         bitcast<f32>(atlas[fill_raw + 2u]), bitcast<f32>(atlas[fill_raw + 3u]),
     );
     let dilation = border.spread_px + 0.5;
-    let base_pos = instance.screen_rect.xy + corner * instance.screen_rect.zw;
-    // Offset translates the quad only. texcoord below is built from `corner`
-    // and `normal`, both relative to the quad, so the glyph-space mapping
-    // rides along unchanged and the distance query stays correct.
-    let screen_pos = base_pos + params.scroll_offset + border.offset_px
-        + normal * dilation;
+    let base_pos =
+        instance.screen_rect.xy
+        + corner * instance.screen_rect.zw;
+
+    let screen_pos =
+        rotate_text_point(base_pos, instance.rotation)
+        + params.scroll_offset
+        + border.offset_px
+        + rotate_text_vector(normal, instance.rotation) * dilation;
     let ndc = vec2<f32>(
         screen_pos.x / params.screen_size.x * 2.0 - 1.0,
         -(screen_pos.y / params.screen_size.y * 2.0 - 1.0),

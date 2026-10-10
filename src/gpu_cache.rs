@@ -100,6 +100,12 @@ impl Cache {
                     offset: 40,
                     shader_location: 3,
                 },
+                // rotation
+                wgpu::VertexAttribute {
+                    format: VertexFormat::Float32x4,
+                    offset: 48,
+                    shader_location: 4,
+                },
             ],
         };
 

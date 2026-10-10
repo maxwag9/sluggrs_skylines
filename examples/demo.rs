@@ -6,7 +6,6 @@ use sluggrs_skylines::outline::{
 };
 
 use std::sync::Arc;
-use wgpu::hal::DynQueue;
 use wgpu::util::DeviceExt;
 use winit::{
     application::ApplicationHandler, event::WindowEvent, event_loop::EventLoop, window::Window,

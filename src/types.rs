@@ -376,6 +376,8 @@ pub struct TextArea<'a> {
     pub bounds: TextBounds,
     pub default_color: cosmic_text::Color,
     pub decorations: &'a [TextDecoration],
+    pub rotation: f32,
+    pub rotation_origin: [f32; 2],
 }
 
 impl TextArea<'_> {

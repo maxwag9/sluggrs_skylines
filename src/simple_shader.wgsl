@@ -43,7 +43,22 @@ fn read_raw(idx: u32) -> i32 { return atlas[idx]; }
 fn read_raw4(base: u32) -> vec4<i32> {
     return vec4<i32>(atlas[base], atlas[base + 1u], atlas[base + 2u], atlas[base + 3u]);
 }
+fn rotate_text_vector(
+    value: vec2<f32>,
+    rotation: vec4<f32>,
+) -> vec2<f32> {
+    return vec2<f32>(
+        rotation.x * value.x - rotation.y * value.y,
+        rotation.y * value.x + rotation.x * value.y,
+    );
+}
 
+fn rotate_text_point(
+    p: vec2<f32>,
+    rotation: vec4<f32>,
+) -> vec2<f32> {
+    return rotation.zw + rotate_text_vector(p - rotation.zw, rotation);
+}
 // Per-instance data for a glyph
 struct GlyphInstance {
     // Screen-space position and size of the glyph quad
@@ -51,6 +66,7 @@ struct GlyphInstance {
     @location(1) color: vec4<f32>,
     @location(2) glyph: vec2<u32>, // header offset, command texel count
     @location(3) depth_ppem: vec2<f32>,
+    @location(4) rotation: vec4<f32>,
 }
 
 struct VertexOutput {
@@ -75,11 +91,14 @@ fn vs_main(instance: GlyphInstance, @builtin(vertex_index) vid: u32) -> VertexOu
     // Outward normal for this corner: (-1,-1), (1,-1), (-1,1), (1,1)
     let normal = corner * 2.0 - 1.0;
 
-    // Undilated screen-space position
-    let base_pos = instance.screen_rect.xy + corner * instance.screen_rect.zw;
+    let base_pos =
+        instance.screen_rect.xy
+        + corner * instance.screen_rect.zw;
 
-    // Apply scroll offset and dilate (push each corner outward by half a pixel)
-    let screen_pos = base_pos + params.scroll_offset + normal * 0.5;
+    let screen_pos =
+        rotate_text_point(base_pos, instance.rotation)
+        + params.scroll_offset
+        + rotate_text_vector(normal, instance.rotation) * 0.5;
 
     // Convert to NDC: [0, screen_size] → [-1, 1], flip Y
     let ndc = vec2<f32>(
@@ -365,7 +384,7 @@ fn composite_colors(src: vec4<f32>, dst: vec4<f32>, mode: i32) -> vec4<f32> {
     // All inputs/outputs are premultiplied alpha.
     let sa = src.a;
     let da = dst.a;
-    switch mode {
+    switch (mode) {
         // 0: Clear
         case 0: { return vec4<f32>(0.0); }
         // 1: Source
@@ -516,7 +535,7 @@ fn render_color(
         let cmd = read_raw4(raw_cursor);
         raw_cursor += 4u; // each command = 4 raw i32 values
 
-        switch cmd.x {
+        switch (cmd.x) {
             case 1: { // CMD_PUSH_GROUP
                 sp = min(sp + 1, 7);
                 stack[sp] = vec4<f32>(0.0);

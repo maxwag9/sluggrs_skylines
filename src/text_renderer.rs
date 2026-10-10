@@ -344,7 +344,7 @@ fn instance_bounds_at_depth(
         if instance.depth.to_bits() != depth.to_bits() {
             continue;
         }
-        let [x, y, w, h] = instance.screen_rect;
+        let [x, y, w, h] = rotated_rect_aabb(instance.screen_rect, instance.rotation);
         // vs_border rasterises the mask half a pixel outside screen_rect on
         // every side, so the union has to include that or the destination is
         // clipped just inside the convolution's true support.
@@ -739,7 +739,7 @@ impl TextRenderer {
                 if glyphs_valid {
                     let dx = text_area.left - cached.left;
                     let dy = text_area.top - cached.top;
-                    let decorations = text_area.physical_decorations()?;
+                    let decorations = physical_decorations_for_area(&text_area)?;
                     let extents = DecorationExtents::of(&decorations, DECORATION_AA);
                     // Color is paint only - it rides in the uniform and never
                     // moves a candidate. Spread and offset are geometry, and
@@ -790,7 +790,7 @@ impl TextRenderer {
                 clipped_bounds(text_area.bounds, resolution);
 
             let default_color = color_to_f32(text_area.default_color);
-            let decorations = text_area.physical_decorations()?;
+            let decorations = physical_decorations_for_area(&text_area)?;
             let extents = DecorationExtents::of(&decorations, DECORATION_AA);
             let work_start = work.len();
 
@@ -805,6 +805,7 @@ impl TextRenderer {
                     bounds_min_y,
                     bounds_max_y,
                     extents,
+                    text_area.rotation
                 ) {
                     all_runs_included = false;
                     if started_visible_range {
@@ -1057,7 +1058,7 @@ impl TextRenderer {
                         area.bounds_max_x,
                         area.bounds_max_y,
                     ];
-
+                    let rotation = rotation_transform(text_area);
                     for wi in &work[area.work_start..area.work_end] {
                         let glyph = wi.glyph;
                         let entry = atlas.glyph(&wi.key).expect("miss resolved in pass 2");
@@ -1101,7 +1102,7 @@ impl TextRenderer {
 
                                 let screen_rect = [screen_x, screen_y, screen_w, screen_h];
                                 if vector_rect_visible(
-                                    screen_rect,
+                                    rotated_rect_aabb(screen_rect, rotation),
                                     scroll,
                                     bounds,
                                     DecorationExtents::default(),
@@ -1116,6 +1117,7 @@ impl TextRenderer {
                                         cmd_texel_count: v1_entry.cmd_texel_count,
                                         depth: metadata_to_depth(glyph.metadata),
                                         ppem: glyph.font_size * text_area.scale,
+                                        rotation,
                                     });
                                     // COLRv1 is never decorated.
                                     area_decorated.push(false);
@@ -1155,7 +1157,7 @@ impl TextRenderer {
 
                                     let screen_rect = [screen_x, screen_y, screen_w, screen_h];
                                     if !vector_rect_visible(
-                                        screen_rect,
+                                        rotated_rect_aabb(screen_rect, rotation),
                                         scroll,
                                         bounds,
                                         DecorationExtents::default(),
@@ -1177,6 +1179,7 @@ impl TextRenderer {
                                         cmd_texel_count: 0,
                                         depth,
                                         ppem,
+                                        rotation,
                                     });
                                     // COLRv0 layers are never decorated.
                                     area_decorated.push(false);
@@ -1200,7 +1203,7 @@ impl TextRenderer {
                         let screen_h = (max_y - min_y) * scale;
 
                         let screen_rect = [screen_x, screen_y, screen_w, screen_h];
-                        if !vector_rect_visible(screen_rect, scroll, bounds, area.extents) {
+                        if !vector_rect_visible(rotated_rect_aabb(screen_rect, rotation), scroll, bounds, area.extents) {
                             complete = false;
                             continue;
                         }
@@ -1217,6 +1220,7 @@ impl TextRenderer {
                             cmd_texel_count: 0,
                             depth: metadata_to_depth(glyph.metadata),
                             ppem: glyph.font_size * text_area.scale,
+                            rotation,
                         };
                         area_instances.push(fill_instance);
                         // Glyph KIND, not "this area currently has
@@ -1784,7 +1788,11 @@ fn run_is_visible(
     bounds_min_y: i32,
     bounds_max_y: i32,
     extents: DecorationExtents,
+    rotation: f32
 ) -> bool {
+    if normalized_rotation(rotation) != 0.0 {
+        return true;
+    }
     let start_y = top + run.line_top * scale + scroll_y;
     let end_y = start_y + run.line_height * scale;
     start_y - extents.top <= bounds_max_y as f32 && bounds_min_y as f32 <= end_y + extents.bottom
@@ -1850,7 +1858,9 @@ fn re_cull_vector_instances(
         let mut adjusted = *instance;
         adjusted.screen_rect[0] += dx;
         adjusted.screen_rect[1] += dy;
-        if vector_rect_visible(adjusted.screen_rect, scroll, bounds, extents) {
+        adjusted.rotation[2] += dx;
+        adjusted.rotation[3] += dy;
+        if vector_rect_visible(rotated_rect_aabb(adjusted.screen_rect, adjusted.rotation), scroll, bounds, extents) {
             visible.push(adjusted);
             visible_decorated.push(decorated.get(index).copied().unwrap_or(false));
         } else {
@@ -1879,6 +1889,93 @@ fn zero_depth(_: usize) -> f32 {
     0.0
 }
 
+fn normalized_rotation(degrees: f32) -> f32 {
+    if degrees.is_finite() {
+        degrees.rem_euclid(360.0)
+    } else {
+        0.0
+    }
+}
+
+fn rotation_transform(area: &TextArea<'_>) -> [f32; 4] {
+    let degrees = normalized_rotation(area.rotation);
+
+    if degrees == 0.0 {
+        return [1.0, 0.0, 0.0, 0.0];
+    }
+
+    let (sin, cos) = degrees.to_radians().sin_cos();
+
+    [
+        cos,
+        sin,
+        area.rotation_origin[0],
+        area.rotation_origin[1],
+    ]
+}
+
+fn rotate_vector(vector: [f32; 2], rotation: [f32; 4]) -> [f32; 2] {
+    [
+        rotation[0] * vector[0] - rotation[1] * vector[1],
+        rotation[1] * vector[0] + rotation[0] * vector[1],
+    ]
+}
+
+fn rotate_point(point: [f32; 2], rotation: [f32; 4]) -> [f32; 2] {
+    let relative = [
+        point[0] - rotation[2],
+        point[1] - rotation[3],
+    ];
+
+    let rotated = rotate_vector(relative, rotation);
+
+    [
+        rotation[2] + rotated[0],
+        rotation[3] + rotated[1],
+    ]
+}
+
+fn rotated_rect_aabb(
+    rect: [f32; 4],
+    rotation: [f32; 4],
+) -> [f32; 4] {
+    let [x, y, width, height] = rect;
+
+    let corners = [
+        [x, y],
+        [x + width, y],
+        [x, y + height],
+        [x + width, y + height],
+    ];
+
+    let mut min_x = f32::INFINITY;
+    let mut min_y = f32::INFINITY;
+    let mut max_x = f32::NEG_INFINITY;
+    let mut max_y = f32::NEG_INFINITY;
+
+    for corner in corners {
+        let point = rotate_point(corner, rotation);
+
+        min_x = min_x.min(point[0]);
+        min_y = min_y.min(point[1]);
+        max_x = max_x.max(point[0]);
+        max_y = max_y.max(point[1]);
+    }
+
+    [min_x, min_y, max_x - min_x, max_y - min_y]
+}
+fn physical_decorations_for_area(
+    area: &TextArea<'_>,
+) -> Result<Vec<PhysicalDecoration>, PrepareError> {
+    let mut decorations = area.physical_decorations()?;
+    let rotation = rotation_transform(area);
+
+    for decoration in &mut decorations {
+        decoration.offset = rotate_vector(decoration.offset, rotation);
+    }
+
+    Ok(decorations)
+}
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1919,6 +2016,7 @@ mod tests {
             cmd_texel_count: 0,
             depth: 0.0,
             ppem: 12.0,
+            rotation: [0.0, 0.0, 0.0, 0.0],
         };
         let previous = [instance(1.0), instance(2.0)];
         let reordered = [instance(2.0), instance(1.0)];
@@ -1950,9 +2048,9 @@ mod tests {
     fn run_visibility_applies_fractional_and_negative_scroll_at_inclusive_edges() {
         let layout_run = run(10.0, 5.0);
         let e = no_extents();
-        assert!(run_is_visible(0.0, 1.0, -15.0, &layout_run, 0, 10, e));
-        assert!(run_is_visible(0.5, 1.0, -10.5, &layout_run, 0, 5, e));
-        assert!(!run_is_visible(0.0, 1.0, -15.1, &layout_run, 0, 10, e));
+        assert!(run_is_visible(0.0, 1.0, -15.0, &layout_run, 0, 10, e, 0.0));
+        assert!(run_is_visible(0.5, 1.0, -10.5, &layout_run, 0, 5, e, 0.0));
+        assert!(!run_is_visible(0.0, 1.0, -15.1, &layout_run, 0, 10, e, 0.0));
     }
 
     /// A run pushed off the top by scroll must be revived by an UPWARD
@@ -1970,8 +2068,8 @@ mod tests {
             ..DecorationExtents::default()
         };
         // Run sits just above the bounds: only `bottom` reach can save it.
-        assert!(!run_is_visible(0.0, 1.0, -17.0, &layout_run, 0, 10, down));
-        assert!(run_is_visible(0.0, 1.0, -17.0, &layout_run, 0, 10, up));
+        assert!(!run_is_visible(0.0, 1.0, -17.0, &layout_run, 0, 10, down, 0.0));
+        assert!(run_is_visible(0.0, 1.0, -17.0, &layout_run, 0, 10, up, 0.0));
     }
 
     #[test]
@@ -2054,6 +2152,7 @@ mod tests {
             cmd_texel_count: 0,
             depth: 0.0,
             ppem: 0.0,
+            rotation: [0.0, 0.0, 0.0, 0.0],
         };
         let (visible, decorated, complete) = re_cull_vector_instances(
             &[instance],
@@ -2095,6 +2194,7 @@ mod tests {
             cmd_texel_count: 0,
             depth: 0.0,
             ppem: 0.0,
+            rotation: [0.0, 0.0, 0.0, 0.0],
         };
         // The middle instance is far off to the left and will be culled.
         let instances = [at(2.0), at(-500.0), at(4.0)];
@@ -2150,6 +2250,7 @@ mod tests {
             cmd_texel_count: 0,
             depth,
             ppem: 16.0,
+            rotation: [0.0, 0.0, 0.0, 0.0],
         };
         let instances = [at(0.25, 0.0), at(0.75, 10.0), at(0.25, 20.0)];
         assert_eq!(
@@ -2176,6 +2277,7 @@ mod tests {
             cmd_texel_count: 0,
             depth: 0.5,
             ppem: 16.0,
+            rotation: [0.0, 0.0, 0.0, 0.0],
         };
         assert!(instance_bounds_at_depth(&[instance], [0.0, 0.0], 0.9).is_none());
     }

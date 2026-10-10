@@ -65,9 +65,10 @@ pub struct GlyphInstance {
     pub cmd_texel_count: u32,
     pub depth: f32,
     pub ppem: f32,
+    pub rotation: [f32; 4],
 }
 
-const _: () = assert!(std::mem::size_of::<GlyphInstance>() == 48);
+const _: () = assert!(size_of::<GlyphInstance>() == 64);
 
 #[cfg(test)]
 mod glyph_instance_tests {

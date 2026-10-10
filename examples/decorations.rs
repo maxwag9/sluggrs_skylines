@@ -18,10 +18,9 @@ use sluggrs_skylines::{
     TextRenderer, Viewport,
 };
 
-use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping, SwashCache, Weight};
+use cosmic_text::{Attrs, Buffer, Family, FontSystem, Metrics, Shaping, Weight};
 
 use std::sync::Arc;
-use wgpu::hal::DynQueue;
 use winit::{
     application::ApplicationHandler, event::WindowEvent, event_loop::EventLoop, window::Window,
 };
@@ -50,7 +49,6 @@ struct RenderState {
     queue: wgpu::Queue,
     config: wgpu::SurfaceConfiguration,
     font_system: FontSystem,
-    swash_cache: SwashCache,
     atlas: TextAtlas,
     text_renderer: TextRenderer,
     viewport: Viewport,
@@ -375,7 +373,6 @@ async fn init_render_state(window: Arc<Window>) -> RenderState {
         queue,
         config,
         font_system,
-        swash_cache: SwashCache::new(),
         atlas,
         text_renderer,
         viewport,
@@ -430,6 +427,8 @@ fn render(state: &mut RenderState) {
             },
             default_color: line.default_color,
             decorations: if borders_on { &line.decorations } else { &[] },
+            rotation: 10.0,
+            rotation_origin: [0.0, 0.0],
         })
         .collect();
 
