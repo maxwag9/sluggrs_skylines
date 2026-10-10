@@ -67,6 +67,9 @@ struct CachedTextArea {
     /// Whether the cached candidates cover the entire area, so a later
     /// placement-only change can re-cull them without re-walking the buffer.
     complete: bool,
+
+    rotation: f32,
+    rotation_origin_offset: [f32; 2],
 }
 
 /// Per-decoration-draw paint. 32 bytes, matching `BorderParams` in the
@@ -730,6 +733,12 @@ impl TextRenderer {
                 && cached.bounds == text_area.bounds
                 && cached.default_color == text_area.default_color
                 && cached.atlas_generation == atlas_gen
+                && cached.rotation == normalized_rotation(text_area.rotation)
+                && cached.rotation_origin_offset
+                == [
+                text_area.rotation_origin[0] - text_area.left,
+                text_area.rotation_origin[1] - text_area.top,
+            ]
             {
                 let glyphs_valid = cached
                     .distinct_keys
@@ -1082,6 +1091,7 @@ impl TextRenderer {
                                     area.bounds_max_x,
                                     area.bounds_max_y,
                                 ],
+                                rotation
                             });
                             continue;
                         }
@@ -1270,6 +1280,11 @@ impl TextRenderer {
                             non_vector_glyphs: area_non_vector,
                             scroll,
                             complete,
+                            rotation: normalized_rotation(text_area.rotation),
+                            rotation_origin_offset: [
+                                text_area.rotation_origin[0] - text_area.left,
+                                text_area.rotation_origin[1] - text_area.top,
+                            ],
                         },
                     );
                 }

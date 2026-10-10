@@ -157,6 +157,8 @@ fn prepare(
             },
             default_color: cosmic_text::Color::rgb(255, 255, 255),
             decorations: &[],
+            rotation: 10.0,
+            rotation_origin: [0.0, 0.0],
         }]
     )
 }

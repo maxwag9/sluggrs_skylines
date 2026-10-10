@@ -461,6 +461,8 @@ fn main() {
             bounds,
             default_color: *color,
             decorations,
+            rotation: 10.0,
+            rotation_origin: [0.0, 0.0],
         })
         .collect();
 

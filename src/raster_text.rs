@@ -25,6 +25,7 @@ pub(crate) struct RasterVertex {
     pub atlas_size: [f32; 2],
     pub color: [f32; 4],
     pub depth: f32,
+    pub rotation: [f32; 4]
 }
 
 /// Data collected during the vector glyph loop for non-vector glyphs.
@@ -35,6 +36,7 @@ pub(crate) struct NonVectorGlyph {
     pub depth: f32,
     pub line_y_scaled_rounded: f32,
     pub clip_bounds: [i32; 4],
+    pub rotation: [f32; 4]
 }
 
 /// Cached atlas location and placement for a rasterized glyph.
@@ -193,6 +195,11 @@ impl RasterState {
                             format: wgpu::VertexFormat::Float32,
                             offset: 48,
                             shader_location: 5,
+                        },
+                        wgpu::VertexAttribute {
+                            format: wgpu::VertexFormat::Float32x4,
+                            offset: 52,
+                            shader_location: 6,
                         },
                     ]
                 })],
@@ -358,6 +365,7 @@ impl RasterState {
                     atlas_size: [w_f / atlas_f, h_f / atlas_f],
                     color,
                     depth: nv.depth,
+                    rotation: nv.rotation,
                 });
             }
 

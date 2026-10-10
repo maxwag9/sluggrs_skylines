@@ -120,6 +120,8 @@ fn make_areas(buffer: &Buffer, bounds: TextBounds) -> [TextArea<'_>; OCCURRENCES
         bounds,
         default_color: Color::rgb(255, 255, 255),
         decorations: &[],
+        rotation: 10.0,
+        rotation_origin: [0.0, 0.0],
     })
 }
 

@@ -1,6 +1,21 @@
 // Textured quad shader for raster glyph fallback (emoji, bitmap fonts).
 // Shares the Params uniform layout with sluggrs_skylines (group 0).
+fn rotate_text_vector(
+    value: vec2<f32>,
+    rotation: vec4<f32>,
+) -> vec2<f32> {
+    return vec2<f32>(
+        rotation.x * value.x - rotation.y * value.y,
+        rotation.y * value.x + rotation.x * value.y,
+    );
+}
 
+fn rotate_text_point(
+    p: vec2<f32>,
+    rotation: vec4<f32>,
+) -> vec2<f32> {
+    return rotation.zw + rotate_text_vector(p - rotation.zw, rotation);
+}
 struct Params {
     screen_size: vec2<f32>,
     scroll_offset: vec2<f32>,
@@ -17,6 +32,7 @@ struct Instance {
     @location(3) atlas_size: vec2<f32>,
     @location(4) color: vec4<f32>,
     @location(5) depth: f32,
+    @location(6) rotation: vec4<f32>,
 }
 
 struct VsOut {
@@ -28,7 +44,13 @@ struct VsOut {
 @vertex
 fn vs_main(inst: Instance, @builtin(vertex_index) vid: u32) -> VsOut {
     let corner = vec2<f32>(f32(vid & 1u), f32((vid >> 1u) & 1u));
-    let screen = inst.screen_pos + corner * inst.screen_size + params.scroll_offset;
+    let base_pos =
+        inst.screen_pos
+        + corner * inst.screen_size;
+
+    let screen =
+        rotate_text_point(base_pos, inst.rotation)
+        + params.scroll_offset;
     let ndc = vec2<f32>(
         screen.x / params.screen_size.x * 2.0 - 1.0,
         -(screen.y / params.screen_size.y * 2.0 - 1.0),

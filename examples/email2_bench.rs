@@ -454,6 +454,8 @@ fn layout_text_areas(buffers: &[Buffer]) -> Vec<TextArea<'_>> {
                 },
                 default_color: cosmic_text::Color::rgb(230, 230, 230),
                 decorations: &[],
+                rotation: 10.0,
+                rotation_origin: [0.0, 0.0],
             };
             top += height + 30.0;
             area

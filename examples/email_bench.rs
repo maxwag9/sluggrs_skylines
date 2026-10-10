@@ -302,6 +302,8 @@ fn main() {
                     bounds: area.bounds,
                     default_color: area.default_color,
                     decorations: &[],
+                    rotation: 10.0,
+                    rotation_origin: [0.0, 0.0],
                 }
             })
             .collect();
@@ -453,8 +455,10 @@ fn layout_text_areas(buffers: &[Buffer]) -> Vec<TextArea<'_>> {
                     right: WIDTH as i32,
                     bottom: HEIGHT as i32,
                 },
-                default_color: cosmic_text::Color::rgb(230, 230, 230),
+                default_color: Color::rgb(230, 230, 230),
                 decorations: &[],
+                rotation: 10.0,
+                rotation_origin: [0.0, 0.0],
             };
             top += height + gap;
             area
